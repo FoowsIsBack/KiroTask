@@ -1,6 +1,8 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   runApp(const ToDoApp());
@@ -9,9 +11,23 @@ void main() {
 // ─── Task Model ───────────────────────────────────────────────────────────────
 class Task {
   String title;
+  String note; // NEW: optional notes/description
   bool isDone;
 
-  Task({required this.title, this.isDone = false});
+  Task({required this.title, this.note = '', this.isDone = false});
+
+  // For local storage: convert to/from JSON
+  Map<String, dynamic> toJson() => {
+        'title': title,
+        'note': note,
+        'isDone': isDone,
+      };
+
+  factory Task.fromJson(Map<String, dynamic> json) => Task(
+        title: json['title'] ?? '',
+        note: json['note'] ?? '',
+        isDone: json['isDone'] ?? false,
+      );
 }
 
 // ─── App Root ─────────────────────────────────────────────────────────────────
@@ -65,7 +81,6 @@ class ToDoHome extends StatefulWidget {
 }
 
 class _ToDoHomeState extends State<ToDoHome> {
-  // Now stores Task objects instead of plain Strings
   final Map<DateTime, List<Task>> _tasksByDate = {};
   final TextEditingController _controller = TextEditingController();
   DateTime _selectedDay = DateTime.now();
@@ -78,6 +93,51 @@ class _ToDoHomeState extends State<ToDoHome> {
 
   List<Task> get _selectedTasks =>
       _tasksByDate[_normalizeDate(_selectedDay)] ?? [];
+
+  // ── Local Storage ──────────────────────────────────────────────────────────
+
+  /// Save all tasks to SharedPreferences as JSON
+  Future<void> _saveTasks() async {
+    final prefs = await SharedPreferences.getInstance();
+    final Map<String, dynamic> encoded = {};
+    _tasksByDate.forEach((date, tasks) {
+      final key = DateFormat('yyyy-MM-dd').format(date);
+      encoded[key] = tasks.map((t) => t.toJson()).toList();
+    });
+    await prefs.setString('tasks', jsonEncode(encoded));
+  }
+
+  /// Load all tasks from SharedPreferences
+  Future<void> _loadTasks() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString('tasks');
+    if (raw == null) return;
+
+    final Map<String, dynamic> decoded = jsonDecode(raw);
+    final Map<DateTime, List<Task>> loaded = {};
+    decoded.forEach((dateStr, taskList) {
+      final date = DateTime.parse(dateStr);
+      loaded[date] = (taskList as List).map((t) {
+        final map = Map<String, dynamic>.from(t as Map);
+        return Task(
+          title: (map['title'] ?? '').toString(),
+          note: (map['note'] ?? '').toString(),
+          isDone: map['isDone'] == true,
+        );
+      }).toList();
+    });
+
+    setState(() {
+      _tasksByDate.clear();
+      _tasksByDate.addAll(loaded);
+    });
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTasks(); // load saved tasks on startup
+  }
 
   // ── CRUD ───────────────────────────────────────────────────────────────────
 
@@ -104,10 +164,38 @@ class _ToDoHomeState extends State<ToDoHome> {
       _tasksByDate.putIfAbsent(key, () => []);
       _tasksByDate[key]!.add(Task(title: _controller.text.trim()));
     });
+    _saveTasks();
     _controller.clear();
   }
 
-  /// Removes task at [index], then shows a Snackbar with an Undo action.
+  /// NEW: Confirm dialog before deleting via button
+  void _confirmDelete(int index) {
+    final task = _selectedTasks[index];
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Task'),
+        content: Text('Are you sure you want to delete "${task.title}"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () {
+              Navigator.pop(context);
+              _removeTask(index);
+            },
+            child: const Text('Delete',
+                style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Actual removal — called after confirm or after swipe
   void _removeTask(int index) {
     final key = _normalizeDate(_selectedDay);
     final removedTask = _tasksByDate[key]![index];
@@ -115,6 +203,7 @@ class _ToDoHomeState extends State<ToDoHome> {
     setState(() {
       _tasksByDate[key]!.removeAt(index);
     });
+    _saveTasks();
 
     ScaffoldMessenger.of(context).clearSnackBars();
     ScaffoldMessenger.of(context).showSnackBar(
@@ -128,6 +217,7 @@ class _ToDoHomeState extends State<ToDoHome> {
               _tasksByDate.putIfAbsent(key, () => []);
               _tasksByDate[key]!.insert(index, removedTask);
             });
+            _saveTasks();
           },
         ),
       ),
@@ -138,20 +228,41 @@ class _ToDoHomeState extends State<ToDoHome> {
     setState(() {
       _selectedTasks[index].isDone = !_selectedTasks[index].isDone;
     });
+    _saveTasks();
   }
 
   void _editTask(int index) {
     final key = _normalizeDate(_selectedDay);
-    final editController =
-        TextEditingController(text: _tasksByDate[key]![index].title);
+    final task = _tasksByDate[key]![index];
+    final editController = TextEditingController(text: task.title);
+    final noteController = TextEditingController(text: task.note);
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Edit Task'),
-        content: TextField(
-          controller: editController,
-          decoration: const InputDecoration(border: OutlineInputBorder()),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: editController,
+              decoration: const InputDecoration(
+                labelText: 'Task',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            // NEW: Notes field
+            TextField(
+              controller: noteController,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                labelText: 'Notes (optional)',
+                border: OutlineInputBorder(),
+                alignLabelWithHint: true,
+              ),
+            ),
+          ],
         ),
         actions: [
           TextButton(
@@ -162,9 +273,10 @@ class _ToDoHomeState extends State<ToDoHome> {
             onPressed: () {
               if (editController.text.trim().isNotEmpty) {
                 setState(() {
-                  _tasksByDate[key]![index].title =
-                      editController.text.trim();
+                  task.title = editController.text.trim();
+                  task.note = noteController.text.trim();
                 });
+                _saveTasks();
               }
               Navigator.pop(context);
             },
@@ -197,6 +309,10 @@ class _ToDoHomeState extends State<ToDoHome> {
   @override
   Widget build(BuildContext context) {
     final isLight = Theme.of(context).brightness == Brightness.light;
+    final tasks = _selectedTasks;
+    final doneCount = tasks.where((t) => t.isDone).length;
+    final totalCount = tasks.length;
+    final progress = totalCount == 0 ? 0.0 : doneCount / totalCount;
 
     return Scaffold(
       resizeToAvoidBottomInset: false,
@@ -265,13 +381,47 @@ class _ToDoHomeState extends State<ToDoHome> {
                   ),
                 );
               },
+              todayBuilder: (context, day, focusedDay) {
+                return Container(
+                  margin: const EdgeInsets.all(6),
+                  alignment: Alignment.center,
+                  decoration: const BoxDecoration(
+                    color: Colors.green,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Text(
+                    '${day.day}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                );
+              },
+              selectedBuilder: (context, day, focusedDay) {
+                return Container(
+                  margin: const EdgeInsets.all(6),
+                  alignment: Alignment.center,
+                  decoration: const BoxDecoration(
+                    color: Colors.orange,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Text(
+                    '${day.day}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                );
+              },
               defaultBuilder: (context, day, focusedDay) {
                 final normalized = _normalizeDate(day);
-                final tasks = _tasksByDate[normalized] ?? [];
-                final hasTasks = tasks.isNotEmpty;
-                // True only when ALL tasks are done
-                final allDone =
-                    hasTasks && tasks.every((t) => t.isDone);
+                final dayTasks = _tasksByDate[normalized] ?? [];
+                final hasTasks = dayTasks.isNotEmpty;
+                final allDone = hasTasks && dayTasks.every((t) => t.isDone);
+                final isWeekend = day.weekday == DateTime.saturday ||
+                    day.weekday == DateTime.sunday;
 
                 Color bgColor;
                 if (allDone) {
@@ -283,11 +433,10 @@ class _ToDoHomeState extends State<ToDoHome> {
                 }
 
                 Color textColor;
-                if (day.weekday == DateTime.saturday ||
-                    day.weekday == DateTime.sunday) {
-                  textColor = Colors.red;
-                } else if (hasTasks && !allDone) {
+                if (hasTasks) {
                   textColor = Colors.white;
+                } else if (isWeekend) {
+                  textColor = Colors.red;
                 } else {
                   textColor = isLight ? Colors.black : Colors.white;
                 }
@@ -312,7 +461,8 @@ class _ToDoHomeState extends State<ToDoHome> {
             ),
             eventLoader: (day) {
               final normalized = _normalizeDate(day);
-              return _tasksByDate[normalized]?.map((t) => t.title).toList() ?? [];
+              return _tasksByDate[normalized]?.map((t) => t.title).toList() ??
+                  [];
             },
           ),
 
@@ -362,17 +512,47 @@ class _ToDoHomeState extends State<ToDoHome> {
             ),
           ),
 
-          // ── Task Counter ──────────────────────────────────────────────────
-          if (_selectedTasks.isNotEmpty)
+          // ── Progress Bar ──────────────────────────────────────────────────
+          if (totalCount > 0)
             Padding(
-              padding: const EdgeInsets.only(left: 16, right: 16, bottom: 4),
-              child: Row(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    '${_selectedTasks.where((t) => t.isDone).length}/${_selectedTasks.length} done',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: isLight ? Colors.black54 : Colors.white54,
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        '$doneCount/$totalCount done',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: isLight ? Colors.black54 : Colors.white54,
+                        ),
+                      ),
+                      Text(
+                        '${(progress * 100).toStringAsFixed(0)}%',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: progress == 1.0
+                              ? Colors.green
+                              : Colors.indigo,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: LinearProgressIndicator(
+                      value: progress,
+                      minHeight: 8,
+                      backgroundColor: isLight
+                          ? Colors.grey.shade300
+                          : Colors.grey.shade700,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        progress == 1.0 ? Colors.green : Colors.indigo,
+                      ),
                     ),
                   ),
                 ],
@@ -381,7 +561,7 @@ class _ToDoHomeState extends State<ToDoHome> {
 
           // ── Task List ─────────────────────────────────────────────────────
           Expanded(
-            child: _selectedTasks.isEmpty
+            child: tasks.isEmpty
                 ? Center(
                     child: Text(
                       'No tasks for this day',
@@ -392,16 +572,18 @@ class _ToDoHomeState extends State<ToDoHome> {
                     ),
                   )
                 : ListView.builder(
-                    itemCount: _selectedTasks.length,
+                    itemCount: tasks.length,
                     itemBuilder: (context, index) {
-                      final task = _selectedTasks[index];
+                      final task = tasks[index];
 
                       return Dismissible(
-                        key: ValueKey('${_normalizeDate(_selectedDay)}_$index\_${task.title}'),
+                        key: ValueKey(
+                            '${_normalizeDate(_selectedDay)}_${index}_${task.title}'),
                         direction: DismissDirection.endToStart,
                         background: Container(
                           alignment: Alignment.centerRight,
-                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          padding:
+                              const EdgeInsets.symmetric(horizontal: 20),
                           margin: const EdgeInsets.symmetric(
                               horizontal: 12, vertical: 6),
                           decoration: BoxDecoration(
@@ -411,6 +593,7 @@ class _ToDoHomeState extends State<ToDoHome> {
                           child: const Icon(Icons.delete,
                               color: Colors.white, size: 28),
                         ),
+                        // Swipe: no confirm, direct delete with undo
                         confirmDismiss: (_) async => true,
                         onDismissed: (_) => _removeTask(index),
                         child: Card(
@@ -424,7 +607,6 @@ class _ToDoHomeState extends State<ToDoHome> {
                               ? Colors.green.shade100
                               : (isLight ? Colors.white : Colors.grey[900]),
                           child: ListTile(
-                            // ── Checkbox ────────────────────────────────────
                             leading: Checkbox(
                               value: task.isDone,
                               activeColor: Colors.indigo,
@@ -433,22 +615,32 @@ class _ToDoHomeState extends State<ToDoHome> {
                               ),
                               onChanged: (_) => _toggleDone(index),
                             ),
-                            // ── Task Title ──────────────────────────────────
                             title: Text(
                               task.title,
                               style: TextStyle(
                                 fontSize: 16,
                                 color: task.isDone
-                                    ? (isLight
-                                        ? Colors.black38
-                                        : Colors.white38)
+                                    ? Colors.black54
                                     : (isLight ? Colors.black : Colors.white),
                                 decoration: task.isDone
                                     ? TextDecoration.lineThrough
                                     : TextDecoration.none,
                               ),
                             ),
-                            // ── Actions ─────────────────────────────────────
+                            // Show note as subtitle if not empty
+                            subtitle: task.note.isNotEmpty
+                                ? Text(
+                                    task.note,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: task.isDone
+                                          ? Colors.black45
+                                          : (isLight ? Colors.black45 : Colors.white38),
+                                    ),
+                                  )
+                                : null,
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
@@ -457,10 +649,11 @@ class _ToDoHomeState extends State<ToDoHome> {
                                       color: Colors.blue),
                                   onPressed: () => _editTask(index),
                                 ),
+                                // NEW: Confirm before delete via button
                                 IconButton(
                                   icon: const Icon(Icons.delete,
                                       color: Colors.red),
-                                  onPressed: () => _removeTask(index),
+                                  onPressed: () => _confirmDelete(index),
                                 ),
                               ],
                             ),
