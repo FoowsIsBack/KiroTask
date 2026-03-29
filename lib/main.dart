@@ -6,6 +6,15 @@ void main() {
   runApp(const ToDoApp());
 }
 
+// ─── Task Model ───────────────────────────────────────────────────────────────
+class Task {
+  String title;
+  bool isDone;
+
+  Task({required this.title, this.isDone = false});
+}
+
+// ─── App Root ─────────────────────────────────────────────────────────────────
 class ToDoApp extends StatefulWidget {
   const ToDoApp({Key? key}) : super(key: key);
 
@@ -43,6 +52,7 @@ class _ToDoAppState extends State<ToDoApp> {
   }
 }
 
+// ─── Home Screen ──────────────────────────────────────────────────────────────
 class ToDoHome extends StatefulWidget {
   final VoidCallback toggleTheme;
   final ThemeMode themeMode;
@@ -55,14 +65,24 @@ class ToDoHome extends StatefulWidget {
 }
 
 class _ToDoHomeState extends State<ToDoHome> {
-  final Map<DateTime, List<String>> _tasksByDate = {};
+  // Now stores Task objects instead of plain Strings
+  final Map<DateTime, List<Task>> _tasksByDate = {};
   final TextEditingController _controller = TextEditingController();
   DateTime _selectedDay = DateTime.now();
   DateTime _focusedDay = DateTime.now();
 
+  // ── Helpers ────────────────────────────────────────────────────────────────
+
+  DateTime _normalizeDate(DateTime date) =>
+      DateTime(date.year, date.month, date.day);
+
+  List<Task> get _selectedTasks =>
+      _tasksByDate[_normalizeDate(_selectedDay)] ?? [];
+
+  // ── CRUD ───────────────────────────────────────────────────────────────────
+
   void _addTask() {
-    if (_controller.text.isEmpty) {
-      // Alert if empty
+    if (_controller.text.trim().isEmpty) {
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
@@ -80,24 +100,50 @@ class _ToDoHomeState extends State<ToDoHome> {
     }
 
     setState(() {
-      final normalized = _normalizeDate(_selectedDay);
-      _tasksByDate.putIfAbsent(normalized, () => []);
-      _tasksByDate[normalized]!.add(_controller.text);
+      final key = _normalizeDate(_selectedDay);
+      _tasksByDate.putIfAbsent(key, () => []);
+      _tasksByDate[key]!.add(Task(title: _controller.text.trim()));
     });
     _controller.clear();
   }
 
+  /// Removes task at [index], then shows a Snackbar with an Undo action.
   void _removeTask(int index) {
+    final key = _normalizeDate(_selectedDay);
+    final removedTask = _tasksByDate[key]![index];
+
     setState(() {
-      final normalized = _normalizeDate(_selectedDay);
-      _tasksByDate[normalized]!.removeAt(index);
+      _tasksByDate[key]!.removeAt(index);
+    });
+
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Deleted "${removedTask.title}"'),
+        duration: const Duration(seconds: 3),
+        action: SnackBarAction(
+          label: 'Undo',
+          onPressed: () {
+            setState(() {
+              _tasksByDate.putIfAbsent(key, () => []);
+              _tasksByDate[key]!.insert(index, removedTask);
+            });
+          },
+        ),
+      ),
+    );
+  }
+
+  void _toggleDone(int index) {
+    setState(() {
+      _selectedTasks[index].isDone = !_selectedTasks[index].isDone;
     });
   }
 
   void _editTask(int index) {
-    final normalized = _normalizeDate(_selectedDay);
-    TextEditingController editController =
-        TextEditingController(text: _tasksByDate[normalized]![index]);
+    final key = _normalizeDate(_selectedDay);
+    final editController =
+        TextEditingController(text: _tasksByDate[key]![index].title);
 
     showDialog(
       context: context,
@@ -105,9 +151,7 @@ class _ToDoHomeState extends State<ToDoHome> {
         title: const Text('Edit Task'),
         content: TextField(
           controller: editController,
-          decoration: const InputDecoration(
-            border: OutlineInputBorder(),
-          ),
+          decoration: const InputDecoration(border: OutlineInputBorder()),
         ),
         actions: [
           TextButton(
@@ -116,9 +160,12 @@ class _ToDoHomeState extends State<ToDoHome> {
           ),
           ElevatedButton(
             onPressed: () {
-              setState(() {
-                _tasksByDate[normalized]![index] = editController.text;
-              });
+              if (editController.text.trim().isNotEmpty) {
+                setState(() {
+                  _tasksByDate[key]![index].title =
+                      editController.text.trim();
+                });
+              }
               Navigator.pop(context);
             },
             child: const Text('Save'),
@@ -128,8 +175,7 @@ class _ToDoHomeState extends State<ToDoHome> {
     );
   }
 
-  List<String> get _selectedTasks =>
-      _tasksByDate[_normalizeDate(_selectedDay)] ?? [];
+  // ── Date Picker ────────────────────────────────────────────────────────────
 
   Future<void> _pickDate() async {
     final DateTime? picked = await showDatePicker(
@@ -146,16 +192,19 @@ class _ToDoHomeState extends State<ToDoHome> {
     }
   }
 
-  DateTime _normalizeDate(DateTime date) {
-    return DateTime(date.year, date.month, date.day);
-  }
+  // ── Build ──────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     final isLight = Theme.of(context).brightness == Brightness.light;
 
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       appBar: AppBar(
+        leading: IconButton(
+          icon: Image.asset('assets/icon/icon.png', width: 24, height: 24),
+          onPressed: () {},
+        ),
         title: const Text('To Do List'),
         elevation: 0,
         actions: [
@@ -171,6 +220,7 @@ class _ToDoHomeState extends State<ToDoHome> {
       ),
       body: Column(
         children: [
+          // ── Calendar ──────────────────────────────────────────────────────
           TableCalendar(
             firstDay: DateTime.utc(2020, 1, 1),
             lastDay: DateTime.utc(2030, 12, 31),
@@ -203,11 +253,10 @@ class _ToDoHomeState extends State<ToDoHome> {
             ),
             calendarBuilders: CalendarBuilders(
               headerTitleBuilder: (context, date) {
-                final formatted = DateFormat('MMMM d, yyyy').format(date);
                 return GestureDetector(
                   onTap: _pickDate,
                   child: Text(
-                    formatted,
+                    DateFormat('MMMM d, yyyy').format(date),
                     style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
@@ -218,14 +267,26 @@ class _ToDoHomeState extends State<ToDoHome> {
               },
               defaultBuilder: (context, day, focusedDay) {
                 final normalized = _normalizeDate(day);
-                final hasTasks = _tasksByDate[normalized]?.isNotEmpty ?? false;
+                final tasks = _tasksByDate[normalized] ?? [];
+                final hasTasks = tasks.isNotEmpty;
+                // True only when ALL tasks are done
+                final allDone =
+                    hasTasks && tasks.every((t) => t.isDone);
 
-                // Saturday and Sunday in red
+                Color bgColor;
+                if (allDone) {
+                  bgColor = Colors.green.shade300;
+                } else if (hasTasks) {
+                  bgColor = Colors.blue;
+                } else {
+                  bgColor = Colors.transparent;
+                }
+
                 Color textColor;
                 if (day.weekday == DateTime.saturday ||
                     day.weekday == DateTime.sunday) {
                   textColor = Colors.red;
-                } else if (hasTasks) {
+                } else if (hasTasks && !allDone) {
                   textColor = Colors.white;
                 } else {
                   textColor = isLight ? Colors.black : Colors.white;
@@ -235,7 +296,7 @@ class _ToDoHomeState extends State<ToDoHome> {
                   margin: const EdgeInsets.all(6),
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: hasTasks ? Colors.blue : Colors.transparent,
+                    color: bgColor,
                     shape: BoxShape.circle,
                   ),
                   child: Text(
@@ -251,9 +312,11 @@ class _ToDoHomeState extends State<ToDoHome> {
             ),
             eventLoader: (day) {
               final normalized = _normalizeDate(day);
-              return _tasksByDate[normalized] ?? [];
+              return _tasksByDate[normalized]?.map((t) => t.title).toList() ?? [];
             },
           ),
+
+          // ── Input Row ─────────────────────────────────────────────────────
           Padding(
             padding: const EdgeInsets.all(12.0),
             child: Row(
@@ -261,6 +324,7 @@ class _ToDoHomeState extends State<ToDoHome> {
                 Expanded(
                   child: TextField(
                     controller: _controller,
+                    onSubmitted: (_) => _addTask(),
                     decoration: InputDecoration(
                       hintText: 'Add a new task...',
                       filled: true,
@@ -297,6 +361,25 @@ class _ToDoHomeState extends State<ToDoHome> {
               ],
             ),
           ),
+
+          // ── Task Counter ──────────────────────────────────────────────────
+          if (_selectedTasks.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(left: 16, right: 16, bottom: 4),
+              child: Row(
+                children: [
+                  Text(
+                    '${_selectedTasks.where((t) => t.isDone).length}/${_selectedTasks.length} done',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: isLight ? Colors.black54 : Colors.white54,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+          // ── Task List ─────────────────────────────────────────────────────
           Expanded(
             child: _selectedTasks.isEmpty
                 ? Center(
@@ -311,36 +394,76 @@ class _ToDoHomeState extends State<ToDoHome> {
                 : ListView.builder(
                     itemCount: _selectedTasks.length,
                     itemBuilder: (context, index) {
-                      return Card(
-                        margin: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 6),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        elevation: 3,
-                        color: isLight ? Colors.white : Colors.grey[900],
-                        child: ListTile(
-                          title: Text(
-                            _selectedTasks[index],
-                            style: TextStyle(
-                              fontSize: 16,
-                              color: isLight ? Colors.black : Colors.white,
-                            ),
+                      final task = _selectedTasks[index];
+
+                      return Dismissible(
+                        key: ValueKey('${_normalizeDate(_selectedDay)}_$index\_${task.title}'),
+                        direction: DismissDirection.endToStart,
+                        background: Container(
+                          alignment: Alignment.centerRight,
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          margin: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.red,
+                            borderRadius: BorderRadius.circular(12),
                           ),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                icon:
-                                    const Icon(Icons.edit, color: Colors.blue),
-                                onPressed: () => _editTask(index),
+                          child: const Icon(Icons.delete,
+                              color: Colors.white, size: 28),
+                        ),
+                        confirmDismiss: (_) async => true,
+                        onDismissed: (_) => _removeTask(index),
+                        child: Card(
+                          margin: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 6),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          elevation: 3,
+                          color: task.isDone
+                              ? Colors.green.shade100
+                              : (isLight ? Colors.white : Colors.grey[900]),
+                          child: ListTile(
+                            // ── Checkbox ────────────────────────────────────
+                            leading: Checkbox(
+                              value: task.isDone,
+                              activeColor: Colors.indigo,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(4),
                               ),
-                              IconButton(
-                                icon:
-                                    const Icon(Icons.delete, color: Colors.red),
-                                onPressed: () => _removeTask(index),
+                              onChanged: (_) => _toggleDone(index),
+                            ),
+                            // ── Task Title ──────────────────────────────────
+                            title: Text(
+                              task.title,
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: task.isDone
+                                    ? (isLight
+                                        ? Colors.black38
+                                        : Colors.white38)
+                                    : (isLight ? Colors.black : Colors.white),
+                                decoration: task.isDone
+                                    ? TextDecoration.lineThrough
+                                    : TextDecoration.none,
                               ),
-                            ],
+                            ),
+                            // ── Actions ─────────────────────────────────────
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.edit,
+                                      color: Colors.blue),
+                                  onPressed: () => _editTask(index),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.delete,
+                                      color: Colors.red),
+                                  onPressed: () => _removeTask(index),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       );
