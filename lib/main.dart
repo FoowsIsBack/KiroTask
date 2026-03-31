@@ -209,6 +209,9 @@ class _ToDoHomeState extends State<ToDoHome> {
   DateTime _selectedDay = DateTime.now();
   DateTime _focusedDay = DateTime.now();
 
+  // Tracks if congrats was already shown for the selected day
+  final Set<DateTime> _congratsShown = {};
+
   // ── Helpers ────────────────────────────────────────────────────────────────
 
   DateTime _normalizeDate(DateTime date) =>
@@ -265,6 +268,127 @@ class _ToDoHomeState extends State<ToDoHome> {
     _loadTasks();
   }
 
+  // ── Congratulations Dialog ─────────────────────────────────────────────────
+  void _showCongratsIfNeeded() {
+    final key = _normalizeDate(_selectedDay);
+    final tasks = _tasksByDate[key] ?? [];
+    if (tasks.isEmpty) return;
+
+    final allDone = tasks.every((t) => t.isDone);
+    if (allDone && !_congratsShown.contains(key)) {
+      _congratsShown.add(key);
+      // Small delay so checkbox animation finishes first
+      Future.delayed(const Duration(milliseconds: 300), () {
+        if (!mounted) return;
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  '🎉',
+                  style: TextStyle(fontSize: 56),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'All Done!',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'You completed all tasks for ${DateFormat('MMMM d').format(_selectedDay)}. Great job!',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey,
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              Center(
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.indigo,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 32, vertical: 12),
+                  ),
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Done'),
+                ),
+              ),
+            ],
+          ),
+        );
+      });
+    } else if (!allDone) {
+      // Reset so congrats can show again if user re-completes
+      _congratsShown.remove(key);
+    }
+  }
+
+  // ── Long Press: Show Full Note ─────────────────────────────────────────────
+  void _showNoteDialog(Task task) {
+    final isLight =
+        Theme.of(context).brightness == Brightness.light;
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: Row(
+          children: [
+            const Icon(Icons.notes, color: Colors.indigo, size: 20),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                task.title,
+                style: const TextStyle(fontSize: 16),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+        content: task.note.isNotEmpty
+            ? SingleChildScrollView(
+                child: Text(
+                  task.note,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: isLight ? Colors.black87 : Colors.white70,
+                  ),
+                ),
+              )
+            : Text(
+                'No notes added.',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: isLight ? Colors.black38 : Colors.white38,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
   // ── CRUD ───────────────────────────────────────────────────────────────────
 
   void _addTask() {
@@ -287,11 +411,12 @@ class _ToDoHomeState extends State<ToDoHome> {
     }
 
     final title = _capitalizeFirst(raw);
-
     setState(() {
       final key = _normalizeDate(_selectedDay);
       _tasksByDate.putIfAbsent(key, () => []);
       _tasksByDate[key]!.add(Task(title: title));
+      // Reset congrats when new task is added
+      _congratsShown.remove(key);
     });
     _saveTasks();
     _controller.clear();
@@ -329,6 +454,7 @@ class _ToDoHomeState extends State<ToDoHome> {
 
     setState(() {
       _tasksByDate[key]!.removeAt(index);
+      _congratsShown.remove(key);
     });
     _saveTasks();
 
@@ -336,7 +462,7 @@ class _ToDoHomeState extends State<ToDoHome> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Deleted "${removedTask.title}"'),
-        duration: const Duration(seconds: 3),
+        duration: const Duration(seconds: 5),
         action: SnackBarAction(
           label: 'Undo',
           onPressed: () {
@@ -357,6 +483,7 @@ class _ToDoHomeState extends State<ToDoHome> {
       _selectedTasks[index].isDone = !_selectedTasks[index].isDone;
     });
     _saveTasks();
+    _showCongratsIfNeeded();
   }
 
   void _editTask(int index) {
@@ -511,12 +638,10 @@ class _ToDoHomeState extends State<ToDoHome> {
                 color: Colors.green,
                 shape: BoxShape.circle,
               ),
-              // ── Marker hidden here — handled by markerBuilder below ────
               markersMaxCount: 1,
               outsideDaysVisible: false,
             ),
             calendarBuilders: CalendarBuilders(
-              // ── FIX: Marker dot color depends on theme ─────────────────
               markerBuilder: (context, day, events) {
                 if (events.isEmpty) return const SizedBox.shrink();
                 return Positioned(
@@ -525,7 +650,6 @@ class _ToDoHomeState extends State<ToDoHome> {
                     width: 6,
                     height: 6,
                     decoration: BoxDecoration(
-                      // White in dark mode, black in light mode
                       color: isLight ? Colors.black : Colors.white,
                       shape: BoxShape.circle,
                     ),
@@ -799,70 +923,88 @@ class _ToDoHomeState extends State<ToDoHome> {
                         ),
                         confirmDismiss: (_) async => true,
                         onDismissed: (_) => _removeTask(index),
-                        child: Card(
-                          margin: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 6),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          elevation: 3,
-                          color: cardColor,
-                          child: ListTile(
-                            leading: Checkbox(
-                              value: task.isDone,
-                              activeColor: Colors.indigo,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              onChanged: (_) => _toggleDone(index),
+                        // ── Long Press → show full note ──────────────────
+                        child: GestureDetector(
+                          onLongPress: () => _showNoteDialog(task),
+                          child: Card(
+                            margin: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 6),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
                             ),
-                            title: Text(
-                              task.title,
-                              style: TextStyle(
-                                fontSize: 16,
-                                color: task.isDone
-                                    ? (isLight
-                                        ? Colors.black54
-                                        : Colors.white70)
-                                    : (isLight
-                                        ? Colors.black
-                                        : Colors.white),
-                                decoration: task.isDone
-                                    ? TextDecoration.lineThrough
-                                    : TextDecoration.none,
+                            elevation: 3,
+                            color: cardColor,
+                            child: ListTile(
+                              leading: Checkbox(
+                                value: task.isDone,
+                                activeColor: Colors.indigo,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                onChanged: (_) => _toggleDone(index),
                               ),
-                            ),
-                            subtitle: task.note.isNotEmpty
-                                ? Text(
-                                    task.note,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: task.isDone
-                                          ? (isLight
-                                              ? Colors.black45
-                                              : Colors.white54)
-                                          : (isLight
-                                              ? Colors.black45
-                                              : Colors.white38),
-                                    ),
-                                  )
-                                : null,
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton(
-                                  icon: const Icon(Icons.edit,
-                                      color: Colors.blue),
-                                  onPressed: () => _editTask(index),
+                              title: Text(
+                                task.title,
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: task.isDone
+                                      ? (isLight
+                                          ? Colors.black54
+                                          : Colors.white70)
+                                      : (isLight
+                                          ? Colors.black
+                                          : Colors.white),
+                                  decoration: task.isDone
+                                      ? TextDecoration.lineThrough
+                                      : TextDecoration.none,
                                 ),
-                                IconButton(
-                                  icon: const Icon(Icons.delete,
-                                      color: Colors.red),
-                                  onPressed: () => _confirmDelete(index),
-                                ),
-                              ],
+                              ),
+                              subtitle: task.note.isNotEmpty
+                                  ? Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            task.note,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: task.isDone
+                                                  ? (isLight
+                                                      ? Colors.black45
+                                                      : Colors.white54)
+                                                  : (isLight
+                                                      ? Colors.black45
+                                                      : Colors.white38),
+                                            ),
+                                          ),
+                                        ),
+                                        // Hint that long press shows full note
+                                        Icon(
+                                          Icons.open_in_full,
+                                          size: 11,
+                                          color: isLight
+                                              ? Colors.black26
+                                              : Colors.white24,
+                                        ),
+                                      ],
+                                    )
+                                  : null,
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.edit,
+                                        color: Colors.blue),
+                                    onPressed: () => _editTask(index),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.delete,
+                                        color: Colors.red),
+                                    onPressed: () => _confirmDelete(index),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ),
