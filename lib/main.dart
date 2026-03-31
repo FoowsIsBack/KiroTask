@@ -217,7 +217,6 @@ class _ToDoHomeState extends State<ToDoHome> {
   List<Task> get _selectedTasks =>
       _tasksByDate[_normalizeDate(_selectedDay)] ?? [];
 
-  /// Capitalizes the first letter of a string
   String _capitalizeFirst(String text) {
     if (text.isEmpty) return text;
     return text[0].toUpperCase() + text.substring(1);
@@ -287,7 +286,6 @@ class _ToDoHomeState extends State<ToDoHome> {
       return;
     }
 
-    // ── Auto-capitalize first letter ───────────────────────────────────────
     final title = _capitalizeFirst(raw);
 
     setState(() {
@@ -402,7 +400,6 @@ class _ToDoHomeState extends State<ToDoHome> {
             onPressed: () {
               if (editController.text.trim().isNotEmpty) {
                 setState(() {
-                  // Auto-capitalize first letter on edit save too
                   task.title = _capitalizeFirst(editController.text.trim());
                   task.note = noteController.text.trim();
                 });
@@ -514,13 +511,27 @@ class _ToDoHomeState extends State<ToDoHome> {
                 color: Colors.green,
                 shape: BoxShape.circle,
               ),
-              markerDecoration: BoxDecoration(
-                color: Colors.black,
-                shape: BoxShape.circle,
-              ),
+              // ── Marker hidden here — handled by markerBuilder below ────
+              markersMaxCount: 1,
               outsideDaysVisible: false,
             ),
             calendarBuilders: CalendarBuilders(
+              // ── FIX: Marker dot color depends on theme ─────────────────
+              markerBuilder: (context, day, events) {
+                if (events.isEmpty) return const SizedBox.shrink();
+                return Positioned(
+                  bottom: 4,
+                  child: Container(
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      // White in dark mode, black in light mode
+                      color: isLight ? Colors.black : Colors.white,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                );
+              },
               headerTitleBuilder: (context, date) {
                 return GestureDetector(
                   onTap: _pickDate,
@@ -631,7 +642,6 @@ class _ToDoHomeState extends State<ToDoHome> {
                   child: TextField(
                     controller: _controller,
                     onSubmitted: (_) => _addTask(),
-                    // ── Auto-capitalize first letter while typing ──────────
                     textCapitalization: TextCapitalization.sentences,
                     decoration: InputDecoration(
                       hintText: 'Add a new task...',
