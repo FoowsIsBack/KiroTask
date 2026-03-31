@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -11,12 +12,11 @@ void main() {
 // ─── Task Model ───────────────────────────────────────────────────────────────
 class Task {
   String title;
-  String note; // NEW: optional notes/description
+  String note;
   bool isDone;
 
   Task({required this.title, this.note = '', this.isDone = false});
 
-  // For local storage: convert to/from JSON
   Map<String, dynamic> toJson() => {
         'title': title,
         'note': note,
@@ -24,9 +24,9 @@ class Task {
       };
 
   factory Task.fromJson(Map<String, dynamic> json) => Task(
-        title: json['title'] ?? '',
-        note: json['note'] ?? '',
-        isDone: json['isDone'] ?? false,
+        title: (json['title'] ?? '').toString(),
+        note: (json['note'] ?? '').toString(),
+        isDone: json['isDone'] == true,
       );
 }
 
@@ -40,18 +40,45 @@ class ToDoApp extends StatefulWidget {
 
 class _ToDoAppState extends State<ToDoApp> {
   ThemeMode _themeMode = ThemeMode.light;
+  bool _initialized = false;
 
-  void _toggleTheme() {
+  @override
+  void initState() {
+    super.initState();
+    _loadTheme();
+  }
+
+  // ── Theme Persistence ──────────────────────────────────────────────────────
+  Future<void> _loadTheme() async {
+    final prefs = await SharedPreferences.getInstance();
+    final isDark = prefs.getBool('isDarkMode') ?? false;
     setState(() {
-      _themeMode =
-          _themeMode == ThemeMode.light ? ThemeMode.dark : ThemeMode.light;
+      _themeMode = isDark ? ThemeMode.dark : ThemeMode.light;
+      _initialized = true;
     });
+  }
+
+  Future<void> _toggleTheme() async {
+    final newMode =
+        _themeMode == ThemeMode.light ? ThemeMode.dark : ThemeMode.light;
+    setState(() => _themeMode = newMode);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('isDarkMode', newMode == ThemeMode.dark);
   }
 
   @override
   Widget build(BuildContext context) {
+    // Show splash while loading saved theme
+    if (!_initialized) {
+      return const MaterialApp(
+        home: SplashScreen(),
+        debugShowCheckedModeBanner: false,
+      );
+    }
+
     return MaterialApp(
       title: 'To Do List',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
         primarySwatch: Colors.indigo,
         scaffoldBackgroundColor: Colors.grey[100],
@@ -68,9 +95,107 @@ class _ToDoAppState extends State<ToDoApp> {
   }
 }
 
+// ─── Splash Screen ────────────────────────────────────────────────────────────
+class SplashScreen extends StatefulWidget {
+  const SplashScreen({Key? key}) : super(key: key);
+
+  @override
+  State<SplashScreen> createState() => _SplashScreenState();
+}
+
+class _SplashScreenState extends State<SplashScreen>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _animController;
+  late Animation<double> _fadeAnim;
+  late Animation<double> _scaleAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    _animController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    );
+    _fadeAnim = CurvedAnimation(
+      parent: _animController,
+      curve: Curves.easeIn,
+    );
+    _scaleAnim = Tween<double>(begin: 0.7, end: 1.0).animate(
+      CurvedAnimation(parent: _animController, curve: Curves.easeOutBack),
+    );
+    _animController.forward();
+  }
+
+  @override
+  void dispose() {
+    _animController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.indigo,
+      body: Center(
+        child: FadeTransition(
+          opacity: _fadeAnim,
+          child: ScaleTransition(
+            scale: _scaleAnim,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 100,
+                  height: 100,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.2),
+                        blurRadius: 20,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(24),
+                    child: Image.asset(
+                      'assets/icon/icon.png',
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  'To Do List',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Stay organized, stay on track.',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 // ─── Home Screen ──────────────────────────────────────────────────────────────
 class ToDoHome extends StatefulWidget {
-  final VoidCallback toggleTheme;
+  final Future<void> Function() toggleTheme;
   final ThemeMode themeMode;
 
   const ToDoHome({Key? key, required this.toggleTheme, required this.themeMode})
@@ -96,7 +221,6 @@ class _ToDoHomeState extends State<ToDoHome> {
 
   // ── Local Storage ──────────────────────────────────────────────────────────
 
-  /// Save all tasks to SharedPreferences as JSON
   Future<void> _saveTasks() async {
     final prefs = await SharedPreferences.getInstance();
     final Map<String, dynamic> encoded = {};
@@ -107,7 +231,6 @@ class _ToDoHomeState extends State<ToDoHome> {
     await prefs.setString('tasks', jsonEncode(encoded));
   }
 
-  /// Load all tasks from SharedPreferences
   Future<void> _loadTasks() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString('tasks');
@@ -136,7 +259,7 @@ class _ToDoHomeState extends State<ToDoHome> {
   @override
   void initState() {
     super.initState();
-    _loadTasks(); // load saved tasks on startup
+    _loadTasks();
   }
 
   // ── CRUD ───────────────────────────────────────────────────────────────────
@@ -168,7 +291,6 @@ class _ToDoHomeState extends State<ToDoHome> {
     _controller.clear();
   }
 
-  /// NEW: Confirm dialog before deleting via button
   void _confirmDelete(int index) {
     final task = _selectedTasks[index];
     showDialog(
@@ -195,7 +317,6 @@ class _ToDoHomeState extends State<ToDoHome> {
     );
   }
 
-  /// Actual removal — called after confirm or after swipe
   void _removeTask(int index) {
     final key = _normalizeDate(_selectedDay);
     final removedTask = _tasksByDate[key]![index];
@@ -225,6 +346,7 @@ class _ToDoHomeState extends State<ToDoHome> {
   }
 
   void _toggleDone(int index) {
+    HapticFeedback.lightImpact();
     setState(() {
       _selectedTasks[index].isDone = !_selectedTasks[index].isDone;
     });
@@ -252,7 +374,6 @@ class _ToDoHomeState extends State<ToDoHome> {
               ),
             ),
             const SizedBox(height: 12),
-            // NEW: Notes field
             TextField(
               controller: noteController,
               maxLines: 3,
@@ -321,7 +442,33 @@ class _ToDoHomeState extends State<ToDoHome> {
           icon: Image.asset('assets/icon/icon.png', width: 24, height: 24),
           onPressed: () {},
         ),
-        title: const Text('To Do List'),
+        title: Row(
+          children: [
+            const Text('To Do List'),
+            // ── Task Count Badge ───────────────────────────────────────────
+            if (totalCount > 0) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: progress == 1.0
+                      ? Colors.green
+                      : Colors.indigo.shade300,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  '$doneCount/$totalCount',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
         elevation: 0,
         actions: [
           IconButton(
@@ -419,7 +566,8 @@ class _ToDoHomeState extends State<ToDoHome> {
                 final normalized = _normalizeDate(day);
                 final dayTasks = _tasksByDate[normalized] ?? [];
                 final hasTasks = dayTasks.isNotEmpty;
-                final allDone = hasTasks && dayTasks.every((t) => t.isDone);
+                final allDone =
+                    hasTasks && dayTasks.every((t) => t.isDone);
                 final isWeekend = day.weekday == DateTime.saturday ||
                     day.weekday == DateTime.sunday;
 
@@ -461,7 +609,9 @@ class _ToDoHomeState extends State<ToDoHome> {
             ),
             eventLoader: (day) {
               final normalized = _normalizeDate(day);
-              return _tasksByDate[normalized]?.map((t) => t.title).toList() ??
+              return _tasksByDate[normalized]
+                      ?.map((t) => t.title)
+                      .toList() ??
                   [];
             },
           ),
@@ -478,7 +628,8 @@ class _ToDoHomeState extends State<ToDoHome> {
                     decoration: InputDecoration(
                       hintText: 'Add a new task...',
                       filled: true,
-                      fillColor: isLight ? Colors.white : Colors.grey[800],
+                      fillColor:
+                          isLight ? Colors.white : Colors.grey[800],
                       contentPadding: const EdgeInsets.symmetric(
                           vertical: 14, horizontal: 16),
                       border: OutlineInputBorder(
@@ -526,7 +677,8 @@ class _ToDoHomeState extends State<ToDoHome> {
                         '$doneCount/$totalCount done',
                         style: TextStyle(
                           fontSize: 13,
-                          color: isLight ? Colors.black54 : Colors.white54,
+                          color:
+                              isLight ? Colors.black54 : Colors.white54,
                         ),
                       ),
                       Text(
@@ -563,12 +715,39 @@ class _ToDoHomeState extends State<ToDoHome> {
           Expanded(
             child: tasks.isEmpty
                 ? Center(
-                    child: Text(
-                      'No tasks for this day',
-                      style: TextStyle(
-                        color: isLight ? Colors.black54 : Colors.white54,
-                        fontSize: 16,
-                      ),
+                    // ── Empty State ─────────────────────────────────────────
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.check_circle_outline,
+                          size: 72,
+                          color: isLight
+                              ? Colors.grey.shade300
+                              : Colors.grey.shade700,
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'No tasks for this day',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
+                            color: isLight
+                                ? Colors.black54
+                                : Colors.white54,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Tap the field above to add one!',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: isLight
+                                ? Colors.black38
+                                : Colors.white38,
+                          ),
+                        ),
+                      ],
                     ),
                   )
                 : ListView.builder(
@@ -576,14 +755,23 @@ class _ToDoHomeState extends State<ToDoHome> {
                     itemBuilder: (context, index) {
                       final task = tasks[index];
 
+                      // ── Dark mode card color fix ─────────────────────────
+                      final Color cardColor = task.isDone
+                          ? (isLight
+                              ? Colors.green.shade100
+                              : Colors.green.shade800)
+                          : (isLight
+                              ? Colors.white
+                              : Colors.grey.shade900);
+
                       return Dismissible(
                         key: ValueKey(
                             '${_normalizeDate(_selectedDay)}_${index}_${task.title}'),
                         direction: DismissDirection.endToStart,
                         background: Container(
                           alignment: Alignment.centerRight,
-                          padding:
-                              const EdgeInsets.symmetric(horizontal: 20),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 20),
                           margin: const EdgeInsets.symmetric(
                               horizontal: 12, vertical: 6),
                           decoration: BoxDecoration(
@@ -593,7 +781,6 @@ class _ToDoHomeState extends State<ToDoHome> {
                           child: const Icon(Icons.delete,
                               color: Colors.white, size: 28),
                         ),
-                        // Swipe: no confirm, direct delete with undo
                         confirmDismiss: (_) async => true,
                         onDismissed: (_) => _removeTask(index),
                         child: Card(
@@ -603,9 +790,7 @@ class _ToDoHomeState extends State<ToDoHome> {
                             borderRadius: BorderRadius.circular(12),
                           ),
                           elevation: 3,
-                          color: task.isDone
-                              ? Colors.green.shade100
-                              : (isLight ? Colors.white : Colors.grey[900]),
+                          color: cardColor,
                           child: ListTile(
                             leading: Checkbox(
                               value: task.isDone,
@@ -620,14 +805,17 @@ class _ToDoHomeState extends State<ToDoHome> {
                               style: TextStyle(
                                 fontSize: 16,
                                 color: task.isDone
-                                    ? Colors.black54
-                                    : (isLight ? Colors.black : Colors.white),
+                                    ? (isLight
+                                        ? Colors.black54
+                                        : Colors.white70)
+                                    : (isLight
+                                        ? Colors.black
+                                        : Colors.white),
                                 decoration: task.isDone
                                     ? TextDecoration.lineThrough
                                     : TextDecoration.none,
                               ),
                             ),
-                            // Show note as subtitle if not empty
                             subtitle: task.note.isNotEmpty
                                 ? Text(
                                     task.note,
@@ -636,8 +824,12 @@ class _ToDoHomeState extends State<ToDoHome> {
                                     style: TextStyle(
                                       fontSize: 12,
                                       color: task.isDone
-                                          ? Colors.black45
-                                          : (isLight ? Colors.black45 : Colors.white38),
+                                          ? (isLight
+                                              ? Colors.black45
+                                              : Colors.white54)
+                                          : (isLight
+                                              ? Colors.black45
+                                              : Colors.white38),
                                     ),
                                   )
                                 : null,
@@ -649,7 +841,6 @@ class _ToDoHomeState extends State<ToDoHome> {
                                       color: Colors.blue),
                                   onPressed: () => _editTask(index),
                                 ),
-                                // NEW: Confirm before delete via button
                                 IconButton(
                                   icon: const Icon(Icons.delete,
                                       color: Colors.red),
