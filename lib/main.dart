@@ -48,7 +48,6 @@ class _ToDoAppState extends State<ToDoApp> {
     _loadTheme();
   }
 
-  // ── Theme Persistence ──────────────────────────────────────────────────────
   Future<void> _loadTheme() async {
     final prefs = await SharedPreferences.getInstance();
     final isDark = prefs.getBool('isDarkMode') ?? false;
@@ -68,7 +67,6 @@ class _ToDoAppState extends State<ToDoApp> {
 
   @override
   Widget build(BuildContext context) {
-    // Show splash while loading saved theme
     if (!_initialized) {
       return const MaterialApp(
         home: SplashScreen(),
@@ -219,6 +217,12 @@ class _ToDoHomeState extends State<ToDoHome> {
   List<Task> get _selectedTasks =>
       _tasksByDate[_normalizeDate(_selectedDay)] ?? [];
 
+  /// Capitalizes the first letter of a string
+  String _capitalizeFirst(String text) {
+    if (text.isEmpty) return text;
+    return text[0].toUpperCase() + text.substring(1);
+  }
+
   // ── Local Storage ──────────────────────────────────────────────────────────
 
   Future<void> _saveTasks() async {
@@ -265,7 +269,8 @@ class _ToDoHomeState extends State<ToDoHome> {
   // ── CRUD ───────────────────────────────────────────────────────────────────
 
   void _addTask() {
-    if (_controller.text.trim().isEmpty) {
+    final raw = _controller.text.trim();
+    if (raw.isEmpty) {
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
@@ -282,10 +287,13 @@ class _ToDoHomeState extends State<ToDoHome> {
       return;
     }
 
+    // ── Auto-capitalize first letter ───────────────────────────────────────
+    final title = _capitalizeFirst(raw);
+
     setState(() {
       final key = _normalizeDate(_selectedDay);
       _tasksByDate.putIfAbsent(key, () => []);
-      _tasksByDate[key]!.add(Task(title: _controller.text.trim()));
+      _tasksByDate[key]!.add(Task(title: title));
     });
     _saveTasks();
     _controller.clear();
@@ -394,7 +402,8 @@ class _ToDoHomeState extends State<ToDoHome> {
             onPressed: () {
               if (editController.text.trim().isNotEmpty) {
                 setState(() {
-                  task.title = editController.text.trim();
+                  // Auto-capitalize first letter on edit save too
+                  task.title = _capitalizeFirst(editController.text.trim());
                   task.note = noteController.text.trim();
                 });
                 _saveTasks();
@@ -407,8 +416,6 @@ class _ToDoHomeState extends State<ToDoHome> {
       ),
     );
   }
-
-  // ── Date Picker ────────────────────────────────────────────────────────────
 
   Future<void> _pickDate() async {
     final DateTime? picked = await showDatePicker(
@@ -445,7 +452,6 @@ class _ToDoHomeState extends State<ToDoHome> {
         title: Row(
           children: [
             const Text('To Do List'),
-            // ── Task Count Badge ───────────────────────────────────────────
             if (totalCount > 0) ...[
               const SizedBox(width: 8),
               Container(
@@ -625,6 +631,8 @@ class _ToDoHomeState extends State<ToDoHome> {
                   child: TextField(
                     controller: _controller,
                     onSubmitted: (_) => _addTask(),
+                    // ── Auto-capitalize first letter while typing ──────────
+                    textCapitalization: TextCapitalization.sentences,
                     decoration: InputDecoration(
                       hintText: 'Add a new task...',
                       filled: true,
@@ -715,7 +723,6 @@ class _ToDoHomeState extends State<ToDoHome> {
           Expanded(
             child: tasks.isEmpty
                 ? Center(
-                    // ── Empty State ─────────────────────────────────────────
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -755,7 +762,6 @@ class _ToDoHomeState extends State<ToDoHome> {
                     itemBuilder: (context, index) {
                       final task = tasks[index];
 
-                      // ── Dark mode card color fix ─────────────────────────
                       final Color cardColor = task.isDone
                           ? (isLight
                               ? Colors.green.shade100
