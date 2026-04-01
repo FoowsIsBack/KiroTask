@@ -214,12 +214,47 @@ class _ToDoHomeState extends State<ToDoHome> {
   DateTime _normalizeDate(DateTime date) =>
       DateTime(date.year, date.month, date.day);
 
-  List<Task> get _selectedTasks =>
+  /// Returns tasks sorted: undone first, done at bottom
+  List<Task> get _selectedTasks {
+    final all = _tasksByDate[_normalizeDate(_selectedDay)] ?? [];
+    final undone = all.where((t) => !t.isDone).toList();
+    final done = all.where((t) => t.isDone).toList();
+    return [...undone, ...done];
+  }
+
+  /// Raw unsorted list (used for index operations on the actual stored list)
+  List<Task> get _rawTasks =>
       _tasksByDate[_normalizeDate(_selectedDay)] ?? [];
 
   String _capitalizeFirst(String text) {
     if (text.isEmpty) return text;
     return text[0].toUpperCase() + text.substring(1);
+  }
+
+  // ── Monthly summary helpers ────────────────────────────────────────────────
+
+  /// Total tasks in the currently focused month
+  int get _monthTotalTasks {
+    int count = 0;
+    _tasksByDate.forEach((date, tasks) {
+      if (date.year == _focusedDay.year &&
+          date.month == _focusedDay.month) {
+        count += tasks.length;
+      }
+    });
+    return count;
+  }
+
+  /// Done tasks in the currently focused month
+  int get _monthDoneTasks {
+    int count = 0;
+    _tasksByDate.forEach((date, tasks) {
+      if (date.year == _focusedDay.year &&
+          date.month == _focusedDay.month) {
+        count += tasks.where((t) => t.isDone).length;
+      }
+    });
+    return count;
   }
 
   // ── Local Storage ──────────────────────────────────────────────────────────
@@ -308,7 +343,8 @@ class _ToDoHomeState extends State<ToDoHome> {
                 Text(
                   'You completed all tasks for ${DateFormat('MMMM d').format(_selectedDay)}. Great job!',
                   textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 14, color: Colors.grey),
+                  style:
+                      const TextStyle(fontSize: 14, color: Colors.grey),
                 ),
               ],
             ),
@@ -342,8 +378,8 @@ class _ToDoHomeState extends State<ToDoHome> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16)),
         title: Row(
           children: [
             const Icon(Icons.notes, color: Colors.indigo, size: 20),
@@ -357,12 +393,11 @@ class _ToDoHomeState extends State<ToDoHome> {
         ),
         content: task.note.isNotEmpty
             ? SingleChildScrollView(
-                child: Text(
-                  task.note,
-                  style: TextStyle(
-                      fontSize: 14,
-                      color: isLight ? Colors.black87 : Colors.white70),
-                ),
+                child: Text(task.note,
+                    style: TextStyle(
+                        fontSize: 14,
+                        color:
+                            isLight ? Colors.black87 : Colors.white70)),
               )
             : Text(
                 'No notes added.',
@@ -382,12 +417,52 @@ class _ToDoHomeState extends State<ToDoHome> {
     );
   }
 
+  // ── Clear All Done Tasks ───────────────────────────────────────────────────
+  void _clearDoneTasks() {
+    final key = _normalizeDate(_selectedDay);
+    final done = (_tasksByDate[key] ?? []).where((t) => t.isDone).toList();
+    if (done.isEmpty) return;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Clear Completed'),
+        content: Text(
+            'Remove ${done.length} completed task${done.length > 1 ? 's' : ''}?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () {
+              Navigator.pop(context);
+              setState(() {
+                _tasksByDate[key]?.removeWhere((t) => t.isDone);
+                _congratsShown.remove(key);
+              });
+              _saveTasks();
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                      '${done.length} completed task${done.length > 1 ? 's' : ''} removed'),
+                  duration: const Duration(seconds: 2),
+                ),
+              );
+            },
+            child: const Text('Clear',
+                style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
   // ── CRUD ───────────────────────────────────────────────────────────────────
 
   void _addTask() {
     final raw = _controller.text.trim();
-
-    // ── Empty check ───────────────────────────────────────────────────────
     if (raw.isEmpty) {
       showDialog(
         context: context,
@@ -406,13 +481,10 @@ class _ToDoHomeState extends State<ToDoHome> {
     }
 
     final title = _capitalizeFirst(raw);
-
-    // ── Duplicate check ───────────────────────────────────────────────────
     final key = _normalizeDate(_selectedDay);
     final existing = _tasksByDate[key] ?? [];
-    final isDuplicate = existing.any(
-      (t) => t.title.toLowerCase() == title.toLowerCase(),
-    );
+    final isDuplicate = existing
+        .any((t) => t.title.toLowerCase() == title.toLowerCase());
 
     if (isDuplicate) {
       showDialog(
@@ -442,7 +514,6 @@ class _ToDoHomeState extends State<ToDoHome> {
     _doAddTask(title);
   }
 
-  /// Actually inserts the task after all checks pass
   void _doAddTask(String title) {
     setState(() {
       final key = _normalizeDate(_selectedDay);
@@ -484,10 +555,12 @@ class _ToDoHomeState extends State<ToDoHome> {
 
   void _removeTask(int index) {
     final key = _normalizeDate(_selectedDay);
-    final removedTask = _tasksByDate[key]![index];
+    // Use sorted task to find actual task, then remove from raw list
+    final taskToRemove = _selectedTasks[index];
+    final rawIndex = _rawTasks.indexOf(taskToRemove);
 
     setState(() {
-      _tasksByDate[key]!.removeAt(index);
+      if (rawIndex != -1) _tasksByDate[key]!.removeAt(rawIndex);
       _congratsShown.remove(key);
     });
     _saveTasks();
@@ -495,14 +568,18 @@ class _ToDoHomeState extends State<ToDoHome> {
     ScaffoldMessenger.of(context).clearSnackBars();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Deleted "${removedTask.title}"'),
+        content: Text('Deleted "${taskToRemove.title}"'),
         duration: const Duration(seconds: 5),
         action: SnackBarAction(
           label: 'Undo',
           onPressed: () {
             setState(() {
               _tasksByDate.putIfAbsent(key, () => []);
-              _tasksByDate[key]!.insert(index, removedTask);
+              if (rawIndex != -1) {
+                _tasksByDate[key]!.insert(rawIndex, taskToRemove);
+              } else {
+                _tasksByDate[key]!.add(taskToRemove);
+              }
             });
             _saveTasks();
           },
@@ -513,8 +590,14 @@ class _ToDoHomeState extends State<ToDoHome> {
 
   void _toggleDone(int index) {
     HapticFeedback.lightImpact();
+    final key = _normalizeDate(_selectedDay);
+    final taskToToggle = _selectedTasks[index];
+    final rawIndex = _rawTasks.indexOf(taskToToggle);
     setState(() {
-      _selectedTasks[index].isDone = !_selectedTasks[index].isDone;
+      if (rawIndex != -1) {
+        _tasksByDate[key]![rawIndex].isDone =
+            !_tasksByDate[key]![rawIndex].isDone;
+      }
     });
     _saveTasks();
     _showCongratsIfNeeded();
@@ -522,7 +605,8 @@ class _ToDoHomeState extends State<ToDoHome> {
 
   void _editTask(int index) {
     final key = _normalizeDate(_selectedDay);
-    final task = _tasksByDate[key]![index];
+    final task = _selectedTasks[index];
+    final rawIndex = _rawTasks.indexOf(task);
     final editController = TextEditingController(text: task.title);
     final noteController = TextEditingController(text: task.note);
 
@@ -533,7 +617,6 @@ class _ToDoHomeState extends State<ToDoHome> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // ── Character limit on edit title field ──────────────────
             TextField(
               controller: editController,
               maxLength: kMaxTitleLength,
@@ -561,11 +644,13 @@ class _ToDoHomeState extends State<ToDoHome> {
           ),
           ElevatedButton(
             onPressed: () {
-              if (editController.text.trim().isNotEmpty) {
+              if (editController.text.trim().isNotEmpty &&
+                  rawIndex != -1) {
                 setState(() {
-                  task.title =
+                  _tasksByDate[key]![rawIndex].title =
                       _capitalizeFirst(editController.text.trim());
-                  task.note = noteController.text.trim();
+                  _tasksByDate[key]![rawIndex].note =
+                      noteController.text.trim();
                 });
                 _saveTasks();
               }
@@ -602,6 +687,11 @@ class _ToDoHomeState extends State<ToDoHome> {
     final doneCount = tasks.where((t) => t.isDone).length;
     final totalCount = tasks.length;
     final progress = totalCount == 0 ? 0.0 : doneCount / totalCount;
+    final hasDone = doneCount > 0;
+
+    // Monthly stats
+    final mTotal = _monthTotalTasks;
+    final mDone = _monthDoneTasks;
 
     return Scaffold(
       resizeToAvoidBottomInset: false,
@@ -638,6 +728,13 @@ class _ToDoHomeState extends State<ToDoHome> {
         ),
         elevation: 0,
         actions: [
+          // ── Clear done button — visible only when there are done tasks ──
+          if (hasDone)
+            IconButton(
+              icon: const Icon(Icons.cleaning_services_rounded),
+              tooltip: 'Clear completed tasks',
+              onPressed: _clearDoneTasks,
+            ),
           IconButton(
             icon: Icon(
               widget.themeMode == ThemeMode.light
@@ -661,6 +758,10 @@ class _ToDoHomeState extends State<ToDoHome> {
                 _selectedDay = selectedDay;
                 _focusedDay = focusedDay;
               });
+            },
+            // Update monthly stats when month changes
+            onPageChanged: (focusedDay) {
+              setState(() => _focusedDay = focusedDay);
             },
             headerStyle: const HeaderStyle(
               formatButtonVisible: false,
@@ -711,9 +812,7 @@ class _ToDoHomeState extends State<ToDoHome> {
                   margin: const EdgeInsets.all(6),
                   alignment: Alignment.center,
                   decoration: const BoxDecoration(
-                    color: Colors.green,
-                    shape: BoxShape.circle,
-                  ),
+                      color: Colors.green, shape: BoxShape.circle),
                   child: Text('${day.day}',
                       style: const TextStyle(
                           color: Colors.white,
@@ -725,9 +824,7 @@ class _ToDoHomeState extends State<ToDoHome> {
                   margin: const EdgeInsets.all(6),
                   alignment: Alignment.center,
                   decoration: const BoxDecoration(
-                    color: Colors.orange,
-                    shape: BoxShape.circle,
-                  ),
+                      color: Colors.orange, shape: BoxShape.circle),
                   child: Text('${day.day}',
                       style: const TextStyle(
                           color: Colors.white,
@@ -778,6 +875,79 @@ class _ToDoHomeState extends State<ToDoHome> {
             },
           ),
 
+          // ── Monthly Summary Banner ─────────────────────────────────────────
+          if (mTotal > 0)
+            Container(
+              margin:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: isLight
+                    ? Colors.indigo.shade50
+                    : Colors.indigo.shade900,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.calendar_month,
+                      size: 16,
+                      color: isLight
+                          ? Colors.indigo
+                          : Colors.indigo.shade200),
+                  const SizedBox(width: 8),
+                  Text(
+                    DateFormat('MMMM').format(_focusedDay),
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: isLight
+                          ? Colors.indigo
+                          : Colors.indigo.shade200,
+                    ),
+                  ),
+                  const Spacer(),
+                  // Done count chip
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: mDone == mTotal
+                          ? Colors.green
+                          : Colors.indigo.shade300,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      '$mDone/$mTotal done',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // Mini progress bar
+                  SizedBox(
+                    width: 60,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: mTotal == 0 ? 0 : mDone / mTotal,
+                        minHeight: 6,
+                        backgroundColor: isLight
+                            ? Colors.indigo.shade100
+                            : Colors.indigo.shade700,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          mDone == mTotal ? Colors.green : Colors.indigo,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
           // ── Input Row ─────────────────────────────────────────────────────
           Padding(
             padding: const EdgeInsets.all(12.0),
@@ -788,7 +958,6 @@ class _ToDoHomeState extends State<ToDoHome> {
                     controller: _controller,
                     onSubmitted: (_) => _addTask(),
                     textCapitalization: TextCapitalization.sentences,
-                    // ── Character limit ──────────────────────────────────
                     maxLength: kMaxTitleLength,
                     inputFormatters: [
                       LengthLimitingTextInputFormatter(kMaxTitleLength),
@@ -804,13 +973,10 @@ class _ToDoHomeState extends State<ToDoHome> {
                         borderRadius: BorderRadius.circular(12),
                         borderSide: BorderSide.none,
                       ),
-                      // Hide the counter unless near the limit
                       counterText: '',
                     ),
                     style: TextStyle(
-                      color: isLight ? Colors.black : Colors.white,
-                    ),
-                    // Show counter only when > 80 chars typed
+                        color: isLight ? Colors.black : Colors.white),
                     buildCounter: (context,
                         {required currentLength,
                         required isFocused,
@@ -836,8 +1002,7 @@ class _ToDoHomeState extends State<ToDoHome> {
                     backgroundColor: Colors.indigo,
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                        borderRadius: BorderRadius.circular(12)),
                     padding: const EdgeInsets.symmetric(
                         vertical: 14, horizontal: 20),
                   ),
@@ -898,20 +1063,18 @@ class _ToDoHomeState extends State<ToDoHome> {
               ),
             ),
 
-          // ── Task List with Pull to Refresh ────────────────────────────────
+          // ── Task List ─────────────────────────────────────────────────────
           Expanded(
             child: tasks.isEmpty
                 ? Center(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(
-                          Icons.check_circle_outline,
-                          size: 72,
-                          color: isLight
-                              ? Colors.grey.shade300
-                              : Colors.grey.shade700,
-                        ),
+                        Icon(Icons.check_circle_outline,
+                            size: 72,
+                            color: isLight
+                                ? Colors.grey.shade300
+                                : Colors.grey.shade700),
                         const SizedBox(height: 16),
                         Text(
                           'No tasks for this day',
@@ -936,17 +1099,14 @@ class _ToDoHomeState extends State<ToDoHome> {
                       ],
                     ),
                   )
-                // ── Pull to Refresh wraps the ListView ──────────────────
                 : RefreshIndicator(
                     onRefresh: _onRefresh,
                     color: Colors.indigo,
                     child: ListView.builder(
-                      // Needed for RefreshIndicator to work even if list is short
                       physics: const AlwaysScrollableScrollPhysics(),
                       itemCount: tasks.length,
                       itemBuilder: (context, index) {
                         final task = tasks[index];
-
                         final Color cardColor = task.isDone
                             ? (isLight
                                 ? Colors.green.shade100
@@ -957,7 +1117,7 @@ class _ToDoHomeState extends State<ToDoHome> {
 
                         return Dismissible(
                           key: ValueKey(
-                              '${_normalizeDate(_selectedDay)}_${index}_${task.title}'),
+                              '${_normalizeDate(_selectedDay)}_${task.title}_${task.isDone}'),
                           direction: DismissDirection.endToStart,
                           background: Container(
                             alignment: Alignment.centerRight,
@@ -980,8 +1140,8 @@ class _ToDoHomeState extends State<ToDoHome> {
                               margin: const EdgeInsets.symmetric(
                                   horizontal: 12, vertical: 6),
                               shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
+                                  borderRadius:
+                                      BorderRadius.circular(12)),
                               elevation: 3,
                               color: cardColor,
                               child: ListTile(
@@ -989,9 +1149,8 @@ class _ToDoHomeState extends State<ToDoHome> {
                                   value: task.isDone,
                                   activeColor: Colors.indigo,
                                   shape: RoundedRectangleBorder(
-                                    borderRadius:
-                                        BorderRadius.circular(4),
-                                  ),
+                                      borderRadius:
+                                          BorderRadius.circular(4)),
                                   onChanged: (_) => _toggleDone(index),
                                 ),
                                 title: Text(
@@ -1027,17 +1186,16 @@ class _ToDoHomeState extends State<ToDoHome> {
                                                         : Colors.white54)
                                                     : (isLight
                                                         ? Colors.black45
-                                                        : Colors.white38),
+                                                        : Colors
+                                                            .white38),
                                               ),
                                             ),
                                           ),
-                                          Icon(
-                                            Icons.open_in_full,
-                                            size: 11,
-                                            color: isLight
-                                                ? Colors.black26
-                                                : Colors.white24,
-                                          ),
+                                          Icon(Icons.open_in_full,
+                                              size: 11,
+                                              color: isLight
+                                                  ? Colors.black26
+                                                  : Colors.white24),
                                         ],
                                       )
                                     : null,
