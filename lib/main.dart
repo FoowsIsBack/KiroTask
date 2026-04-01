@@ -32,6 +32,7 @@ class Task {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const int kMaxTitleLength = 100;
+const String kAppVersion = '1.0.0';
 
 // ─── App Root ─────────────────────────────────────────────────────────────────
 class ToDoApp extends StatefulWidget {
@@ -160,7 +161,7 @@ class _SplashScreenState extends State<SplashScreen>
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(24),
                     child: Image.asset(
-                      'assets/icon/icon.png',
+                      'assets/icon/KiroTask.png',
                       fit: BoxFit.cover,
                     ),
                   ),
@@ -205,16 +206,22 @@ class ToDoHome extends StatefulWidget {
 class _ToDoHomeState extends State<ToDoHome> {
   final Map<DateTime, List<Task>> _tasksByDate = {};
   final TextEditingController _controller = TextEditingController();
+  // ── Notes controller for Add Task ──────────────────────────────────────────
+  final TextEditingController _noteController = TextEditingController();
+  bool _showNoteField = false; // toggle note field in add row
   DateTime _selectedDay = DateTime.now();
   DateTime _focusedDay = DateTime.now();
   final Set<DateTime> _congratsShown = {};
+
+  // ── AnimatedList key ───────────────────────────────────────────────────────
+  final GlobalKey<AnimatedListState> _listKey =
+      GlobalKey<AnimatedListState>();
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
   DateTime _normalizeDate(DateTime date) =>
       DateTime(date.year, date.month, date.day);
 
-  /// Returns tasks sorted: undone first, done at bottom
   List<Task> get _selectedTasks {
     final all = _tasksByDate[_normalizeDate(_selectedDay)] ?? [];
     final undone = all.where((t) => !t.isDone).toList();
@@ -222,7 +229,6 @@ class _ToDoHomeState extends State<ToDoHome> {
     return [...undone, ...done];
   }
 
-  /// Raw unsorted list (used for index operations on the actual stored list)
   List<Task> get _rawTasks =>
       _tasksByDate[_normalizeDate(_selectedDay)] ?? [];
 
@@ -232,33 +238,26 @@ class _ToDoHomeState extends State<ToDoHome> {
   }
 
   // ── Monthly summary helpers ────────────────────────────────────────────────
-
-  /// Total tasks in the currently focused month
   int get _monthTotalTasks {
     int count = 0;
     _tasksByDate.forEach((date, tasks) {
       if (date.year == _focusedDay.year &&
-          date.month == _focusedDay.month) {
-        count += tasks.length;
-      }
+          date.month == _focusedDay.month) count += tasks.length;
     });
     return count;
   }
 
-  /// Done tasks in the currently focused month
   int get _monthDoneTasks {
     int count = 0;
     _tasksByDate.forEach((date, tasks) {
       if (date.year == _focusedDay.year &&
-          date.month == _focusedDay.month) {
+          date.month == _focusedDay.month)
         count += tasks.where((t) => t.isDone).length;
-      }
     });
     return count;
   }
 
   // ── Local Storage ──────────────────────────────────────────────────────────
-
   Future<void> _saveTasks() async {
     final prefs = await SharedPreferences.getInstance();
     final Map<String, dynamic> encoded = {};
@@ -273,7 +272,6 @@ class _ToDoHomeState extends State<ToDoHome> {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString('tasks');
     if (raw == null) return;
-
     final Map<String, dynamic> decoded = jsonDecode(raw);
     final Map<DateTime, List<Task>> loaded = {};
     decoded.forEach((dateStr, taskList) {
@@ -287,7 +285,6 @@ class _ToDoHomeState extends State<ToDoHome> {
         );
       }).toList();
     });
-
     setState(() {
       _tasksByDate.clear();
       _tasksByDate.addAll(loaded);
@@ -300,17 +297,89 @@ class _ToDoHomeState extends State<ToDoHome> {
     _loadTasks();
   }
 
+  @override
+  void dispose() {
+    _controller.dispose();
+    _noteController.dispose();
+    super.dispose();
+  }
+
   // ── Pull to Refresh ────────────────────────────────────────────────────────
   Future<void> _onRefresh() async {
     await _loadTasks();
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Tasks refreshed!'),
-          duration: Duration(seconds: 1),
-        ),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Tasks refreshed!'),
+        duration: Duration(seconds: 1),
+      ));
     }
+  }
+
+  // ── About Dialog ──────────────────────────────────────────────────────────
+  void _showAboutDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: Image.asset(
+                'assets/icon/KiroTask.png',
+                width: 72,
+                height: 72,
+                fit: BoxFit.cover,
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'KiroTask',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Version $kAppVersion',
+                style: const TextStyle(fontSize: 13, color: Colors.grey),
+            ),
+            const SizedBox(height: 16),
+            const Divider(),
+            const SizedBox(height: 8),
+            _infoRow(Icons.person_outline, 'Developer', 'Dave Bangcoyo'),
+          ],
+        ),
+        actions: [
+          Center(
+            child: TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _infoRow(IconData icon, String label, String value) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: Colors.indigo),
+        const SizedBox(width: 8),
+        Text('$label: ',
+            style: const TextStyle(
+                fontSize: 13, fontWeight: FontWeight.w600)),
+        Expanded(
+          child: Text(value,
+              style: const TextStyle(fontSize: 13, color: Colors.grey),
+              overflow: TextOverflow.ellipsis),
+        ),
+      ],
+    );
   }
 
   // ── Congratulations Dialog ─────────────────────────────────────────────────
@@ -318,7 +387,6 @@ class _ToDoHomeState extends State<ToDoHome> {
     final key = _normalizeDate(_selectedDay);
     final tasks = _tasksByDate[key] ?? [];
     if (tasks.isEmpty) return;
-
     final allDone = tasks.every((t) => t.isDone);
     if (allDone && !_congratsShown.contains(key)) {
       _congratsShown.add(key);
@@ -334,11 +402,9 @@ class _ToDoHomeState extends State<ToDoHome> {
               children: [
                 const Text('🎉', style: TextStyle(fontSize: 56)),
                 const SizedBox(height: 12),
-                const Text(
-                  'All Done!',
-                  style: TextStyle(
-                      fontSize: 22, fontWeight: FontWeight.bold),
-                ),
+                const Text('All Done!',
+                    style: TextStyle(
+                        fontSize: 22, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
                 Text(
                   'You completed all tasks for ${DateFormat('MMMM d').format(_selectedDay)}. Great job!',
@@ -396,17 +462,16 @@ class _ToDoHomeState extends State<ToDoHome> {
                 child: Text(task.note,
                     style: TextStyle(
                         fontSize: 14,
-                        color:
-                            isLight ? Colors.black87 : Colors.white70)),
+                        color: isLight
+                            ? Colors.black87
+                            : Colors.white70)),
               )
-            : Text(
-                'No notes added.',
+            : Text('No notes added.',
                 style: TextStyle(
                   fontSize: 14,
                   color: isLight ? Colors.black38 : Colors.white38,
                   fontStyle: FontStyle.italic,
-                ),
-              ),
+                )),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -417,12 +482,12 @@ class _ToDoHomeState extends State<ToDoHome> {
     );
   }
 
-  // ── Clear All Done Tasks ───────────────────────────────────────────────────
+  // ── Clear All Done ─────────────────────────────────────────────────────────
   void _clearDoneTasks() {
     final key = _normalizeDate(_selectedDay);
-    final done = (_tasksByDate[key] ?? []).where((t) => t.isDone).toList();
+    final done =
+        (_tasksByDate[key] ?? []).where((t) => t.isDone).toList();
     if (done.isEmpty) return;
-
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -435,7 +500,8 @@ class _ToDoHomeState extends State<ToDoHome> {
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            style:
+                ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () {
               Navigator.pop(context);
               setState(() {
@@ -443,13 +509,11 @@ class _ToDoHomeState extends State<ToDoHome> {
                 _congratsShown.remove(key);
               });
               _saveTasks();
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                      '${done.length} completed task${done.length > 1 ? 's' : ''} removed'),
-                  duration: const Duration(seconds: 2),
-                ),
-              );
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text(
+                    '${done.length} completed task${done.length > 1 ? 's' : ''} removed'),
+                duration: const Duration(seconds: 2),
+              ));
             },
             child: const Text('Clear',
                 style: TextStyle(color: Colors.white)),
@@ -460,7 +524,6 @@ class _ToDoHomeState extends State<ToDoHome> {
   }
 
   // ── CRUD ───────────────────────────────────────────────────────────────────
-
   void _addTask() {
     final raw = _controller.text.trim();
     if (raw.isEmpty) {
@@ -481,10 +544,11 @@ class _ToDoHomeState extends State<ToDoHome> {
     }
 
     final title = _capitalizeFirst(raw);
+    final note = _noteController.text.trim();
     final key = _normalizeDate(_selectedDay);
     final existing = _tasksByDate[key] ?? [];
-    final isDuplicate = existing
-        .any((t) => t.title.toLowerCase() == title.toLowerCase());
+    final isDuplicate =
+        existing.any((t) => t.title.toLowerCase() == title.toLowerCase());
 
     if (isDuplicate) {
       showDialog(
@@ -501,7 +565,7 @@ class _ToDoHomeState extends State<ToDoHome> {
             ElevatedButton(
               onPressed: () {
                 Navigator.pop(context);
-                _doAddTask(title);
+                _doAddTask(title, note);
               },
               child: const Text('Add Anyway'),
             ),
@@ -510,19 +574,29 @@ class _ToDoHomeState extends State<ToDoHome> {
       );
       return;
     }
-
-    _doAddTask(title);
+    _doAddTask(title, note);
   }
 
-  void _doAddTask(String title) {
+  void _doAddTask(String title, String note) {
+    final key = _normalizeDate(_selectedDay);
+    final newTask = Task(title: title, note: note);
+
     setState(() {
-      final key = _normalizeDate(_selectedDay);
       _tasksByDate.putIfAbsent(key, () => []);
-      _tasksByDate[key]!.add(Task(title: title));
+      _tasksByDate[key]!.add(newTask);
       _congratsShown.remove(key);
     });
+
+    // ── Animate insert at position 0 (undone tasks go to top) ────────────
+    final sortedTasks = _selectedTasks;
+    final insertIndex = sortedTasks.indexOf(newTask);
+    _listKey.currentState
+        ?.insertItem(insertIndex < 0 ? 0 : insertIndex);
+
     _saveTasks();
     _controller.clear();
+    _noteController.clear();
+    setState(() => _showNoteField = false);
   }
 
   void _confirmDelete(int index) {
@@ -555,9 +629,15 @@ class _ToDoHomeState extends State<ToDoHome> {
 
   void _removeTask(int index) {
     final key = _normalizeDate(_selectedDay);
-    // Use sorted task to find actual task, then remove from raw list
     final taskToRemove = _selectedTasks[index];
     final rawIndex = _rawTasks.indexOf(taskToRemove);
+
+    // ── Animate removal ──────────────────────────────────────────────────
+    _listKey.currentState?.removeItem(
+      index,
+      (context, animation) =>
+          _buildAnimatedCard(taskToRemove, animation, index),
+    );
 
     setState(() {
       if (rawIndex != -1) _tasksByDate[key]!.removeAt(rawIndex);
@@ -566,26 +646,25 @@ class _ToDoHomeState extends State<ToDoHome> {
     _saveTasks();
 
     ScaffoldMessenger.of(context).clearSnackBars();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Deleted "${taskToRemove.title}"'),
-        duration: const Duration(seconds: 5),
-        action: SnackBarAction(
-          label: 'Undo',
-          onPressed: () {
-            setState(() {
-              _tasksByDate.putIfAbsent(key, () => []);
-              if (rawIndex != -1) {
-                _tasksByDate[key]!.insert(rawIndex, taskToRemove);
-              } else {
-                _tasksByDate[key]!.add(taskToRemove);
-              }
-            });
-            _saveTasks();
-          },
-        ),
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text('Deleted "${taskToRemove.title}"'),
+      duration: const Duration(seconds: 5),
+      action: SnackBarAction(
+        label: 'Undo',
+        onPressed: () {
+          setState(() {
+            _tasksByDate.putIfAbsent(key, () => []);
+            if (rawIndex != -1) {
+              _tasksByDate[key]!.insert(rawIndex, taskToRemove);
+            } else {
+              _tasksByDate[key]!.add(taskToRemove);
+            }
+          });
+          _listKey.currentState?.insertItem(index);
+          _saveTasks();
+        },
       ),
-    );
+    ));
   }
 
   void _toggleDone(int index) {
@@ -608,7 +687,7 @@ class _ToDoHomeState extends State<ToDoHome> {
     final task = _selectedTasks[index];
     final rawIndex = _rawTasks.indexOf(task);
     final editController = TextEditingController(text: task.title);
-    final noteController = TextEditingController(text: task.note);
+    final noteEditController = TextEditingController(text: task.note);
 
     showDialog(
       context: context,
@@ -627,7 +706,7 @@ class _ToDoHomeState extends State<ToDoHome> {
             ),
             const SizedBox(height: 12),
             TextField(
-              controller: noteController,
+              controller: noteEditController,
               maxLines: 3,
               decoration: const InputDecoration(
                 labelText: 'Notes (optional)',
@@ -650,7 +729,7 @@ class _ToDoHomeState extends State<ToDoHome> {
                   _tasksByDate[key]![rawIndex].title =
                       _capitalizeFirst(editController.text.trim());
                   _tasksByDate[key]![rawIndex].note =
-                      noteController.text.trim();
+                      noteEditController.text.trim();
                 });
                 _saveTasks();
               }
@@ -678,8 +757,53 @@ class _ToDoHomeState extends State<ToDoHome> {
     }
   }
 
-  // ── Build ──────────────────────────────────────────────────────────────────
+  // ── Animated Card Builder ─────────────────────────────────────────────────
+  Widget _buildAnimatedCard(
+      Task task, Animation<double> animation, int index) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    final Color cardColor = task.isDone
+        ? (isLight ? Colors.green.shade100 : Colors.green.shade800)
+        : (isLight ? Colors.white : Colors.grey.shade900);
 
+    return SizeTransition(
+      sizeFactor: CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeInOut,
+      ),
+      child: FadeTransition(
+        opacity: animation,
+        child: Card(
+          margin:
+              const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12)),
+          elevation: 3,
+          color: cardColor,
+          child: ListTile(
+            leading: Checkbox(
+              value: task.isDone,
+              activeColor: Colors.indigo,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(4)),
+              onChanged: null,
+            ),
+            title: Text(task.title,
+                style: TextStyle(
+                  fontSize: 16,
+                  color: task.isDone
+                      ? (isLight ? Colors.black54 : Colors.white70)
+                      : (isLight ? Colors.black : Colors.white),
+                  decoration: task.isDone
+                      ? TextDecoration.lineThrough
+                      : TextDecoration.none,
+                )),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Build ──────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     final isLight = Theme.of(context).brightness == Brightness.light;
@@ -688,17 +812,17 @@ class _ToDoHomeState extends State<ToDoHome> {
     final totalCount = tasks.length;
     final progress = totalCount == 0 ? 0.0 : doneCount / totalCount;
     final hasDone = doneCount > 0;
-
-    // Monthly stats
     final mTotal = _monthTotalTasks;
     final mDone = _monthDoneTasks;
 
     return Scaffold(
       resizeToAvoidBottomInset: false,
       appBar: AppBar(
+        // ── App icon → taps to show About dialog ──────────────────────────
         leading: IconButton(
-          icon: Image.asset('assets/icon/icon.png', width: 24, height: 24),
-          onPressed: () {},
+          icon: Image.asset('assets/icon/KiroTask.png', width: 24, height: 24),
+          onPressed: _showAboutDialog,
+          tooltip: 'About',
         ),
         title: Row(
           children: [
@@ -728,7 +852,6 @@ class _ToDoHomeState extends State<ToDoHome> {
         ),
         elevation: 0,
         actions: [
-          // ── Clear done button — visible only when there are done tasks ──
           if (hasDone)
             IconButton(
               icon: const Icon(Icons.cleaning_services_rounded),
@@ -759,7 +882,6 @@ class _ToDoHomeState extends State<ToDoHome> {
                 _focusedDay = focusedDay;
               });
             },
-            // Update monthly stats when month changes
             onPageChanged: (focusedDay) {
               setState(() => _focusedDay = focusedDay);
             },
@@ -769,13 +891,9 @@ class _ToDoHomeState extends State<ToDoHome> {
             ),
             calendarStyle: const CalendarStyle(
               selectedDecoration: BoxDecoration(
-                color: Colors.orange,
-                shape: BoxShape.circle,
-              ),
+                  color: Colors.orange, shape: BoxShape.circle),
               todayDecoration: BoxDecoration(
-                color: Colors.green,
-                shape: BoxShape.circle,
-              ),
+                  color: Colors.green, shape: BoxShape.circle),
               markersMaxCount: 1,
               outsideDaysVisible: false,
             ),
@@ -807,30 +925,26 @@ class _ToDoHomeState extends State<ToDoHome> {
                   ),
                 );
               },
-              todayBuilder: (context, day, focusedDay) {
-                return Container(
-                  margin: const EdgeInsets.all(6),
-                  alignment: Alignment.center,
-                  decoration: const BoxDecoration(
-                      color: Colors.green, shape: BoxShape.circle),
-                  child: Text('${day.day}',
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold)),
-                );
-              },
-              selectedBuilder: (context, day, focusedDay) {
-                return Container(
-                  margin: const EdgeInsets.all(6),
-                  alignment: Alignment.center,
-                  decoration: const BoxDecoration(
-                      color: Colors.orange, shape: BoxShape.circle),
-                  child: Text('${day.day}',
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold)),
-                );
-              },
+              todayBuilder: (context, day, focusedDay) => Container(
+                margin: const EdgeInsets.all(6),
+                alignment: Alignment.center,
+                decoration: const BoxDecoration(
+                    color: Colors.green, shape: BoxShape.circle),
+                child: Text('${day.day}',
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold)),
+              ),
+              selectedBuilder: (context, day, focusedDay) => Container(
+                margin: const EdgeInsets.all(6),
+                alignment: Alignment.center,
+                decoration: const BoxDecoration(
+                    color: Colors.orange, shape: BoxShape.circle),
+                child: Text('${day.day}',
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold)),
+              ),
               defaultBuilder: (context, day, focusedDay) {
                 final normalized = _normalizeDate(day);
                 final dayTasks = _tasksByDate[normalized] ?? [];
@@ -839,19 +953,16 @@ class _ToDoHomeState extends State<ToDoHome> {
                     hasTasks && dayTasks.every((t) => t.isDone);
                 final isWeekend = day.weekday == DateTime.saturday ||
                     day.weekday == DateTime.sunday;
-
-                Color bgColor = allDone
+                final bgColor = allDone
                     ? Colors.green.shade300
                     : hasTasks
                         ? Colors.blue
                         : Colors.transparent;
-
-                Color textColor = hasTasks
+                final textColor = hasTasks
                     ? Colors.white
                     : isWeekend
                         ? Colors.red
                         : (isLight ? Colors.black : Colors.white);
-
                 return Container(
                   margin: const EdgeInsets.all(6),
                   alignment: Alignment.center,
@@ -878,10 +989,10 @@ class _ToDoHomeState extends State<ToDoHome> {
           // ── Monthly Summary Banner ─────────────────────────────────────────
           if (mTotal > 0)
             Container(
-              margin:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              margin: const EdgeInsets.symmetric(
+                  horizontal: 12, vertical: 4),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 14, vertical: 8),
               decoration: BoxDecoration(
                 color: isLight
                     ? Colors.indigo.shade50
@@ -907,7 +1018,6 @@ class _ToDoHomeState extends State<ToDoHome> {
                     ),
                   ),
                   const Spacer(),
-                  // Done count chip
                   Container(
                     padding: const EdgeInsets.symmetric(
                         horizontal: 8, vertical: 2),
@@ -920,14 +1030,12 @@ class _ToDoHomeState extends State<ToDoHome> {
                     child: Text(
                       '$mDone/$mTotal done',
                       style: const TextStyle(
-                        fontSize: 12,
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                      ),
+                          fontSize: 12,
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold),
                     ),
                   ),
                   const SizedBox(width: 8),
-                  // Mini progress bar
                   SizedBox(
                     width: 60,
                     child: ClipRRect(
@@ -939,7 +1047,9 @@ class _ToDoHomeState extends State<ToDoHome> {
                             ? Colors.indigo.shade100
                             : Colors.indigo.shade700,
                         valueColor: AlwaysStoppedAnimation<Color>(
-                          mDone == mTotal ? Colors.green : Colors.indigo,
+                          mDone == mTotal
+                              ? Colors.green
+                              : Colors.indigo,
                         ),
                       ),
                     ),
@@ -950,65 +1060,123 @@ class _ToDoHomeState extends State<ToDoHome> {
 
           // ── Input Row ─────────────────────────────────────────────────────
           Padding(
-            padding: const EdgeInsets.all(12.0),
-            child: Row(
+            padding:
+                const EdgeInsets.fromLTRB(12, 12, 12, 0),
+            child: Column(
               children: [
-                Expanded(
-                  child: TextField(
-                    controller: _controller,
-                    onSubmitted: (_) => _addTask(),
-                    textCapitalization: TextCapitalization.sentences,
-                    maxLength: kMaxTitleLength,
-                    inputFormatters: [
-                      LengthLimitingTextInputFormatter(kMaxTitleLength),
-                    ],
-                    decoration: InputDecoration(
-                      hintText: 'Add a new task...',
-                      filled: true,
-                      fillColor:
-                          isLight ? Colors.white : Colors.grey[800],
-                      contentPadding: const EdgeInsets.symmetric(
-                          vertical: 14, horizontal: 16),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                      counterText: '',
-                    ),
-                    style: TextStyle(
-                        color: isLight ? Colors.black : Colors.white),
-                    buildCounter: (context,
-                        {required currentLength,
-                        required isFocused,
-                        maxLength}) {
-                      if (currentLength > 80) {
-                        return Text(
-                          '$currentLength/$maxLength',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: currentLength >= kMaxTitleLength
-                                ? Colors.red
-                                : Colors.grey,
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _controller,
+                        onSubmitted: (_) => _addTask(),
+                        textCapitalization:
+                            TextCapitalization.sentences,
+                        maxLength: kMaxTitleLength,
+                        inputFormatters: [
+                          LengthLimitingTextInputFormatter(
+                              kMaxTitleLength),
+                        ],
+                        decoration: InputDecoration(
+                          hintText: 'Add a new task...',
+                          filled: true,
+                          fillColor: isLight
+                              ? Colors.white
+                              : Colors.grey[800],
+                          contentPadding:
+                              const EdgeInsets.symmetric(
+                                  vertical: 14, horizontal: 16),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
                           ),
-                        );
-                      }
-                      return null;
-                    },
-                  ),
+                          counterText: '',
+                          // ── Toggle note field button ───────────────────
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              Icons.note_add_outlined,
+                              color: _showNoteField
+                                  ? Colors.indigo
+                                  : Colors.grey,
+                              size: 20,
+                            ),
+                            tooltip: 'Add note',
+                            onPressed: () => setState(
+                                () => _showNoteField = !_showNoteField),
+                          ),
+                        ),
+                        style: TextStyle(
+                            color:
+                                isLight ? Colors.black : Colors.white),
+                        buildCounter: (context,
+                            {required currentLength,
+                            required isFocused,
+                            maxLength}) {
+                          if (currentLength > 80) {
+                            return Text(
+                              '$currentLength/$maxLength',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color:
+                                    currentLength >= kMaxTitleLength
+                                        ? Colors.red
+                                        : Colors.grey,
+                              ),
+                            );
+                          }
+                          return null;
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.indigo,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        padding: const EdgeInsets.symmetric(
+                            vertical: 14, horizontal: 20),
+                      ),
+                      onPressed: _addTask,
+                      child: const Text('Add',
+                          style:
+                              TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 8),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.indigo,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                    padding: const EdgeInsets.symmetric(
-                        vertical: 14, horizontal: 20),
+                // ── Animated Note Field ──────────────────────────────────
+                AnimatedCrossFade(
+                  duration: const Duration(milliseconds: 250),
+                  firstChild: const SizedBox(height: 8),
+                  secondChild: Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: TextField(
+                      controller: _noteController,
+                      maxLines: 2,
+                      textCapitalization:
+                          TextCapitalization.sentences,
+                      decoration: InputDecoration(
+                        hintText: 'Add a note (optional)...',
+                        filled: true,
+                        fillColor:
+                            isLight ? Colors.white : Colors.grey[800],
+                        contentPadding: const EdgeInsets.symmetric(
+                            vertical: 10, horizontal: 16),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                      style: TextStyle(
+                          color:
+                              isLight ? Colors.black : Colors.white,
+                          fontSize: 13),
+                    ),
                   ),
-                  onPressed: _addTask,
-                  child: const Text('Add',
-                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  crossFadeState: _showNoteField
+                      ? CrossFadeState.showSecond
+                      : CrossFadeState.showFirst,
                 ),
               ],
             ),
@@ -1017,9 +1185,8 @@ class _ToDoHomeState extends State<ToDoHome> {
           // ── Progress Bar ──────────────────────────────────────────────────
           if (totalCount > 0)
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1055,7 +1222,9 @@ class _ToDoHomeState extends State<ToDoHome> {
                           ? Colors.grey.shade300
                           : Colors.grey.shade700,
                       valueColor: AlwaysStoppedAnimation<Color>(
-                        progress == 1.0 ? Colors.green : Colors.indigo,
+                        progress == 1.0
+                            ? Colors.green
+                            : Colors.indigo,
                       ),
                     ),
                   ),
@@ -1063,7 +1232,7 @@ class _ToDoHomeState extends State<ToDoHome> {
               ),
             ),
 
-          // ── Task List ─────────────────────────────────────────────────────
+          // ── Task List (AnimatedList) ───────────────────────────────────────
           Expanded(
             child: tasks.isEmpty
                 ? Center(
@@ -1079,22 +1248,20 @@ class _ToDoHomeState extends State<ToDoHome> {
                         Text(
                           'No tasks for this day',
                           style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
-                            color: isLight
-                                ? Colors.black54
-                                : Colors.white54,
-                          ),
+                              fontSize: 16,
+                              fontWeight: FontWeight.w500,
+                              color: isLight
+                                  ? Colors.black54
+                                  : Colors.white54),
                         ),
                         const SizedBox(height: 6),
                         Text(
                           'Tap the field above to add one!',
                           style: TextStyle(
-                            fontSize: 13,
-                            color: isLight
-                                ? Colors.black38
-                                : Colors.white38,
-                          ),
+                              fontSize: 13,
+                              color: isLight
+                                  ? Colors.black38
+                                  : Colors.white38),
                         ),
                       ],
                     ),
@@ -1102,10 +1269,15 @@ class _ToDoHomeState extends State<ToDoHome> {
                 : RefreshIndicator(
                     onRefresh: _onRefresh,
                     color: Colors.indigo,
-                    child: ListView.builder(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      itemCount: tasks.length,
-                      itemBuilder: (context, index) {
+                    child: AnimatedList(
+                      key: _listKey,
+                      physics:
+                          const AlwaysScrollableScrollPhysics(),
+                      initialItemCount: tasks.length,
+                      itemBuilder: (context, index, animation) {
+                        if (index >= tasks.length) {
+                          return const SizedBox.shrink();
+                        }
                         final task = tasks[index];
                         final Color cardColor = task.isDone
                             ? (isLight
@@ -1115,111 +1287,133 @@ class _ToDoHomeState extends State<ToDoHome> {
                                 ? Colors.white
                                 : Colors.grey.shade900);
 
-                        return Dismissible(
-                          key: ValueKey(
-                              '${_normalizeDate(_selectedDay)}_${task.title}_${task.isDone}'),
-                          direction: DismissDirection.endToStart,
-                          background: Container(
-                            alignment: Alignment.centerRight,
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 20),
-                            margin: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: Colors.red,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: const Icon(Icons.delete,
-                                color: Colors.white, size: 28),
+                        return SizeTransition(
+                          sizeFactor: CurvedAnimation(
+                            parent: animation,
+                            curve: Curves.easeInOut,
                           ),
-                          confirmDismiss: (_) async => true,
-                          onDismissed: (_) => _removeTask(index),
-                          child: GestureDetector(
-                            onLongPress: () => _showNoteDialog(task),
-                            child: Card(
-                              margin: const EdgeInsets.symmetric(
-                                  horizontal: 12, vertical: 6),
-                              shape: RoundedRectangleBorder(
+                          child: FadeTransition(
+                            opacity: animation,
+                            child: Dismissible(
+                              key: ValueKey(
+                                  '${_normalizeDate(_selectedDay)}_${task.title}_${task.isDone}'),
+                              direction:
+                                  DismissDirection.endToStart,
+                              background: Container(
+                                alignment: Alignment.centerRight,
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 20),
+                                margin: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: Colors.red,
                                   borderRadius:
-                                      BorderRadius.circular(12)),
-                              elevation: 3,
-                              color: cardColor,
-                              child: ListTile(
-                                leading: Checkbox(
-                                  value: task.isDone,
-                                  activeColor: Colors.indigo,
+                                      BorderRadius.circular(12),
+                                ),
+                                child: const Icon(Icons.delete,
+                                    color: Colors.white, size: 28),
+                              ),
+                              confirmDismiss: (_) async => true,
+                              onDismissed: (_) => _removeTask(index),
+                              child: GestureDetector(
+                                onLongPress: () =>
+                                    _showNoteDialog(task),
+                                child: Card(
+                                  margin: const EdgeInsets.symmetric(
+                                      horizontal: 12, vertical: 6),
                                   shape: RoundedRectangleBorder(
                                       borderRadius:
-                                          BorderRadius.circular(4)),
-                                  onChanged: (_) => _toggleDone(index),
-                                ),
-                                title: Text(
-                                  task.title,
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    color: task.isDone
-                                        ? (isLight
-                                            ? Colors.black54
-                                            : Colors.white70)
-                                        : (isLight
-                                            ? Colors.black
-                                            : Colors.white),
-                                    decoration: task.isDone
-                                        ? TextDecoration.lineThrough
-                                        : TextDecoration.none,
-                                  ),
-                                ),
-                                subtitle: task.note.isNotEmpty
-                                    ? Row(
-                                        children: [
-                                          Expanded(
-                                            child: Text(
-                                              task.note,
-                                              maxLines: 1,
-                                              overflow:
-                                                  TextOverflow.ellipsis,
-                                              style: TextStyle(
-                                                fontSize: 12,
-                                                color: task.isDone
-                                                    ? (isLight
-                                                        ? Colors.black45
-                                                        : Colors.white54)
-                                                    : (isLight
-                                                        ? Colors.black45
-                                                        : Colors
-                                                            .white38),
+                                          BorderRadius.circular(12)),
+                                  elevation: 3,
+                                  color: cardColor,
+                                  child: ListTile(
+                                    leading: Checkbox(
+                                      value: task.isDone,
+                                      activeColor: Colors.indigo,
+                                      shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(
+                                                  4)),
+                                      onChanged: (_) =>
+                                          _toggleDone(index),
+                                    ),
+                                    title: Text(
+                                      task.title,
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        color: task.isDone
+                                            ? (isLight
+                                                ? Colors.black54
+                                                : Colors.white70)
+                                            : (isLight
+                                                ? Colors.black
+                                                : Colors.white),
+                                        decoration: task.isDone
+                                            ? TextDecoration
+                                                .lineThrough
+                                            : TextDecoration.none,
+                                      ),
+                                    ),
+                                    subtitle: task.note.isNotEmpty
+                                        ? Row(
+                                            children: [
+                                              Expanded(
+                                                child: Text(
+                                                  task.note,
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow
+                                                      .ellipsis,
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    color: task.isDone
+                                                        ? (isLight
+                                                            ? Colors
+                                                                .black45
+                                                            : Colors
+                                                                .white54)
+                                                        : (isLight
+                                                            ? Colors
+                                                                .black45
+                                                            : Colors
+                                                                .white38),
+                                                  ),
+                                                ),
                                               ),
-                                            ),
-                                          ),
-                                          Icon(Icons.open_in_full,
-                                              size: 11,
-                                              color: isLight
-                                                  ? Colors.black26
-                                                  : Colors.white24),
-                                        ],
-                                      )
-                                    : null,
-                                trailing: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    IconButton(
-                                      icon: const Icon(Icons.edit,
-                                          color: Colors.blue),
-                                      onPressed: () => _editTask(index),
+                                              Icon(
+                                                  Icons.open_in_full,
+                                                  size: 11,
+                                                  color: isLight
+                                                      ? Colors.black26
+                                                      : Colors
+                                                          .white24),
+                                            ],
+                                          )
+                                        : null,
+                                    trailing: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        IconButton(
+                                          icon: const Icon(Icons.edit,
+                                              color: Colors.blue),
+                                          onPressed: () =>
+                                              _editTask(index),
+                                        ),
+                                        IconButton(
+                                          icon: const Icon(
+                                              Icons.delete,
+                                              color: Colors.red),
+                                          onPressed: () =>
+                                              _confirmDelete(index),
+                                        ),
+                                      ],
                                     ),
-                                    IconButton(
-                                      icon: const Icon(Icons.delete,
-                                          color: Colors.red),
-                                      onPressed: () =>
-                                          _confirmDelete(index),
-                                    ),
-                                  ],
+                                  ),
                                 ),
                               ),
                             ),
                           ),
                         );
-                      }, 
+                      },
                     ),
                   ),
           ),
