@@ -78,7 +78,7 @@ class _ToDoAppState extends State<ToDoApp> {
     }
 
     return MaterialApp(
-      title: 'To Do List',
+      title: 'KiroTask',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         primarySwatch: Colors.indigo,
@@ -167,7 +167,7 @@ class _SplashScreenState extends State<SplashScreen>
                 ),
                 const SizedBox(height: 24),
                 const Text(
-                  'To Do List',
+                  'KiroTask',
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 28,
@@ -702,7 +702,7 @@ class _ToDoHomeState extends State<ToDoHome> {
         ),
         title: Row(
           children: [
-            const Text('To Do List'),
+            const Text('KiroTask'),
             if (totalCount > 0) ...[
               const SizedBox(width: 8),
               Container(
@@ -1219,7 +1219,7 @@ class _ToDoHomeState extends State<ToDoHome> {
                             ),
                           ),
                         );
-                      },
+                      }, 
                     ),
                   ),
           ),
