@@ -36,7 +36,7 @@ const String kAppVersion = '1.0.0';
 
 // ─── App Root ─────────────────────────────────────────────────────────────────
 class ToDoApp extends StatefulWidget {
-  const ToDoApp({Key? key}) : super(key: key);
+  const ToDoApp({super.key});
 
   @override
   State<ToDoApp> createState() => _ToDoAppState();
@@ -99,7 +99,7 @@ class _ToDoAppState extends State<ToDoApp> {
 
 // ─── Splash Screen ────────────────────────────────────────────────────────────
 class SplashScreen extends StatefulWidget {
-  const SplashScreen({Key? key}) : super(key: key);
+  const SplashScreen({super.key});
 
   @override
   State<SplashScreen> createState() => _SplashScreenState();
@@ -196,8 +196,7 @@ class ToDoHome extends StatefulWidget {
   final ThemeMode themeMode;
 
   const ToDoHome(
-      {Key? key, required this.toggleTheme, required this.themeMode})
-      : super(key: key);
+      {super.key, required this.toggleTheme, required this.themeMode});
 
   @override
   State<ToDoHome> createState() => _ToDoHomeState();
@@ -206,19 +205,26 @@ class ToDoHome extends StatefulWidget {
 class _ToDoHomeState extends State<ToDoHome> {
   final Map<DateTime, List<Task>> _tasksByDate = {};
   final TextEditingController _controller = TextEditingController();
-  // ── Notes controller for Add Task ──────────────────────────────────────────
   final TextEditingController _noteController = TextEditingController();
-  bool _showNoteField = false; // toggle note field in add row
+
+  // ── FocusNodes to dismiss keyboard ────────────────────────────────────────
+  final FocusNode _titleFocus = FocusNode();
+  final FocusNode _noteFocus = FocusNode();
+
+  bool _showNoteField = false;
   DateTime _selectedDay = DateTime.now();
   DateTime _focusedDay = DateTime.now();
   final Set<DateTime> _congratsShown = {};
-
-  // ── AnimatedList key ───────────────────────────────────────────────────────
   final GlobalKey<AnimatedListState> _listKey =
       GlobalKey<AnimatedListState>();
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
+  /// Dismiss keyboard everywhere
+  void _dismissKeyboard() {
+    _titleFocus.unfocus();
+    _noteFocus.unfocus();
+  }
 
+  // ── Helpers ────────────────────────────────────────────────────────────────
   DateTime _normalizeDate(DateTime date) =>
       DateTime(date.year, date.month, date.day);
 
@@ -301,11 +307,14 @@ class _ToDoHomeState extends State<ToDoHome> {
   void dispose() {
     _controller.dispose();
     _noteController.dispose();
+    _titleFocus.dispose();
+    _noteFocus.dispose();
     super.dispose();
   }
 
   // ── Pull to Refresh ────────────────────────────────────────────────────────
   Future<void> _onRefresh() async {
+    _dismissKeyboard();
     await _loadTasks();
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -317,6 +326,7 @@ class _ToDoHomeState extends State<ToDoHome> {
 
   // ── About Dialog ──────────────────────────────────────────────────────────
   void _showAboutDialog() {
+    _dismissKeyboard();
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -335,22 +345,23 @@ class _ToDoHomeState extends State<ToDoHome> {
               ),
             ),
             const SizedBox(height: 16),
-            const Text(
-              'KiroTask',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+            const Text('KiroTask',
+                style: TextStyle(
+                    fontSize: 20, fontWeight: FontWeight.bold)),
             const SizedBox(height: 4),
-            Text(
-              'Version $kAppVersion',
-                style: const TextStyle(fontSize: 13, color: Colors.grey),
-            ),
+            Text('Version $kAppVersion',
+                style:
+                    const TextStyle(fontSize: 13, color: Colors.grey)),
             const SizedBox(height: 16),
             const Divider(),
             const SizedBox(height: 8),
             _infoRow(Icons.person_outline, 'Developer', 'Dave Bangcoyo'),
+            const SizedBox(height: 8),
+            _infoRow(Icons.calendar_today_outlined, 'Built with',
+                'Flutter & Dart'),
+            const SizedBox(height: 8),
+            _infoRow(Icons.storage_outlined, 'Storage',
+                'SharedPreferences (local)'),
           ],
         ),
         actions: [
@@ -440,6 +451,7 @@ class _ToDoHomeState extends State<ToDoHome> {
 
   // ── Long Press: Show Full Note ─────────────────────────────────────────────
   void _showNoteDialog(Task task) {
+    _dismissKeyboard();
     final isLight = Theme.of(context).brightness == Brightness.light;
     showDialog(
       context: context,
@@ -484,6 +496,7 @@ class _ToDoHomeState extends State<ToDoHome> {
 
   // ── Clear All Done ─────────────────────────────────────────────────────────
   void _clearDoneTasks() {
+    _dismissKeyboard();
     final key = _normalizeDate(_selectedDay);
     final done =
         (_tasksByDate[key] ?? []).where((t) => t.isDone).toList();
@@ -525,6 +538,7 @@ class _ToDoHomeState extends State<ToDoHome> {
 
   // ── CRUD ───────────────────────────────────────────────────────────────────
   void _addTask() {
+    _dismissKeyboard();
     final raw = _controller.text.trim();
     if (raw.isEmpty) {
       showDialog(
@@ -587,7 +601,6 @@ class _ToDoHomeState extends State<ToDoHome> {
       _congratsShown.remove(key);
     });
 
-    // ── Animate insert at position 0 (undone tasks go to top) ────────────
     final sortedTasks = _selectedTasks;
     final insertIndex = sortedTasks.indexOf(newTask);
     _listKey.currentState
@@ -600,6 +613,7 @@ class _ToDoHomeState extends State<ToDoHome> {
   }
 
   void _confirmDelete(int index) {
+    _dismissKeyboard();
     final task = _selectedTasks[index];
     showDialog(
       context: context,
@@ -632,11 +646,10 @@ class _ToDoHomeState extends State<ToDoHome> {
     final taskToRemove = _selectedTasks[index];
     final rawIndex = _rawTasks.indexOf(taskToRemove);
 
-    // ── Animate removal ──────────────────────────────────────────────────
     _listKey.currentState?.removeItem(
       index,
       (context, animation) =>
-          _buildAnimatedCard(taskToRemove, animation, index),
+          _buildAnimatedCard(taskToRemove, animation),
     );
 
     setState(() {
@@ -668,6 +681,7 @@ class _ToDoHomeState extends State<ToDoHome> {
   }
 
   void _toggleDone(int index) {
+    _dismissKeyboard();
     HapticFeedback.lightImpact();
     final key = _normalizeDate(_selectedDay);
     final taskToToggle = _selectedTasks[index];
@@ -683,6 +697,7 @@ class _ToDoHomeState extends State<ToDoHome> {
   }
 
   void _editTask(int index) {
+    _dismissKeyboard();
     final key = _normalizeDate(_selectedDay);
     final task = _selectedTasks[index];
     final rawIndex = _rawTasks.indexOf(task);
@@ -743,6 +758,7 @@ class _ToDoHomeState extends State<ToDoHome> {
   }
 
   Future<void> _pickDate() async {
+    _dismissKeyboard();
     final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: _selectedDay,
@@ -758,8 +774,7 @@ class _ToDoHomeState extends State<ToDoHome> {
   }
 
   // ── Animated Card Builder ─────────────────────────────────────────────────
-  Widget _buildAnimatedCard(
-      Task task, Animation<double> animation, int index) {
+  Widget _buildAnimatedCard(Task task, Animation<double> animation) {
     final isLight = Theme.of(context).brightness == Brightness.light;
     final Color cardColor = task.isDone
         ? (isLight ? Colors.green.shade100 : Colors.green.shade800)
@@ -767,9 +782,7 @@ class _ToDoHomeState extends State<ToDoHome> {
 
     return SizeTransition(
       sizeFactor: CurvedAnimation(
-        parent: animation,
-        curve: Curves.easeInOut,
-      ),
+          parent: animation, curve: Curves.easeInOut),
       child: FadeTransition(
         opacity: animation,
         child: Card(
@@ -815,609 +828,618 @@ class _ToDoHomeState extends State<ToDoHome> {
     final mTotal = _monthTotalTasks;
     final mDone = _monthDoneTasks;
 
-    return Scaffold(
-      resizeToAvoidBottomInset: false,
-      appBar: AppBar(
-        // ── App icon → taps to show About dialog ──────────────────────────
-        leading: IconButton(
-          icon: Image.asset('assets/icon/KiroTask.png', width: 24, height: 24),
-          onPressed: _showAboutDialog,
-          tooltip: 'About',
-        ),
-        title: Row(
-          children: [
-            const Text('KiroTask'),
-            if (totalCount > 0) ...[
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: progress == 1.0
-                      ? Colors.green
-                      : Colors.indigo.shade300,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  '$doneCount/$totalCount',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
+    return GestureDetector(
+      // ── Tap anywhere outside → dismiss keyboard ──────────────────────────
+      onTap: _dismissKeyboard,
+      behavior: HitTestBehavior.translucent,
+      child: Scaffold(
+        resizeToAvoidBottomInset: false,
+        appBar: AppBar(
+          leading: IconButton(
+            icon: Image.asset('assets/icon/KiroTask.png',
+                width: 24, height: 24),
+            onPressed: _showAboutDialog,
+            tooltip: 'About',
+          ),
+          title: Row(
+            children: [
+              const Text('KiroTask'),
+              if (totalCount > 0) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: progress == 1.0
+                        ? Colors.green
+                        : Colors.indigo.shade300,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '$doneCount/$totalCount',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
-              ),
+              ],
             ],
+          ),
+          elevation: 0,
+          actions: [
+            if (hasDone)
+              IconButton(
+                icon: const Icon(Icons.cleaning_services_rounded),
+                tooltip: 'Clear completed tasks',
+                onPressed: _clearDoneTasks,
+              ),
+            IconButton(
+              icon: Icon(
+                widget.themeMode == ThemeMode.light
+                    ? Icons.dark_mode
+                    : Icons.light_mode,
+              ),
+              onPressed: widget.toggleTheme,
+            ),
           ],
         ),
-        elevation: 0,
-        actions: [
-          if (hasDone)
-            IconButton(
-              icon: const Icon(Icons.cleaning_services_rounded),
-              tooltip: 'Clear completed tasks',
-              onPressed: _clearDoneTasks,
-            ),
-          IconButton(
-            icon: Icon(
-              widget.themeMode == ThemeMode.light
-                  ? Icons.dark_mode
-                  : Icons.light_mode,
-            ),
-            onPressed: widget.toggleTheme,
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          // ── Calendar ──────────────────────────────────────────────────────
-          TableCalendar(
-            firstDay: DateTime.utc(2020, 1, 1),
-            lastDay: DateTime.utc(2030, 12, 31),
-            focusedDay: _focusedDay,
-            selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
-            onDaySelected: (selectedDay, focusedDay) {
-              setState(() {
-                _selectedDay = selectedDay;
-                _focusedDay = focusedDay;
-              });
-            },
-            onPageChanged: (focusedDay) {
-              setState(() => _focusedDay = focusedDay);
-            },
-            headerStyle: const HeaderStyle(
-              formatButtonVisible: false,
-              titleCentered: true,
-            ),
-            calendarStyle: const CalendarStyle(
-              selectedDecoration: BoxDecoration(
-                  color: Colors.orange, shape: BoxShape.circle),
-              todayDecoration: BoxDecoration(
-                  color: Colors.green, shape: BoxShape.circle),
-              markersMaxCount: 1,
-              outsideDaysVisible: false,
-            ),
-            calendarBuilders: CalendarBuilders(
-              markerBuilder: (context, day, events) {
-                if (events.isEmpty) return const SizedBox.shrink();
-                return Positioned(
-                  bottom: 4,
-                  child: Container(
-                    width: 6,
-                    height: 6,
-                    decoration: BoxDecoration(
-                      color: isLight ? Colors.black : Colors.white,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                );
+        body: Column(
+          children: [
+            // ── Calendar ────────────────────────────────────────────────────
+            TableCalendar(
+              firstDay: DateTime.utc(2020, 1, 1),
+              lastDay: DateTime.utc(2030, 12, 31),
+              focusedDay: _focusedDay,
+              selectedDayPredicate: (day) =>
+                  isSameDay(_selectedDay, day),
+              onDaySelected: (selectedDay, focusedDay) {
+                _dismissKeyboard();
+                setState(() {
+                  _selectedDay = selectedDay;
+                  _focusedDay = focusedDay;
+                });
               },
-              headerTitleBuilder: (context, date) {
-                return GestureDetector(
-                  onTap: _pickDate,
-                  child: Text(
-                    DateFormat('MMMM d, yyyy').format(date),
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.indigo,
-                    ),
-                  ),
-                );
+              onPageChanged: (focusedDay) {
+                _dismissKeyboard();
+                setState(() => _focusedDay = focusedDay);
               },
-              todayBuilder: (context, day, focusedDay) => Container(
-                margin: const EdgeInsets.all(6),
-                alignment: Alignment.center,
-                decoration: const BoxDecoration(
-                    color: Colors.green, shape: BoxShape.circle),
-                child: Text('${day.day}',
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold)),
+              headerStyle: const HeaderStyle(
+                formatButtonVisible: false,
+                titleCentered: true,
               ),
-              selectedBuilder: (context, day, focusedDay) => Container(
-                margin: const EdgeInsets.all(6),
-                alignment: Alignment.center,
-                decoration: const BoxDecoration(
+              calendarStyle: const CalendarStyle(
+                selectedDecoration: BoxDecoration(
                     color: Colors.orange, shape: BoxShape.circle),
-                child: Text('${day.day}',
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold)),
+                todayDecoration: BoxDecoration(
+                    color: Colors.green, shape: BoxShape.circle),
+                markersMaxCount: 1,
+                outsideDaysVisible: false,
               ),
-              defaultBuilder: (context, day, focusedDay) {
-                final normalized = _normalizeDate(day);
-                final dayTasks = _tasksByDate[normalized] ?? [];
-                final hasTasks = dayTasks.isNotEmpty;
-                final allDone =
-                    hasTasks && dayTasks.every((t) => t.isDone);
-                final isWeekend = day.weekday == DateTime.saturday ||
-                    day.weekday == DateTime.sunday;
-                final bgColor = allDone
-                    ? Colors.green.shade300
-                    : hasTasks
-                        ? Colors.blue
-                        : Colors.transparent;
-                final textColor = hasTasks
-                    ? Colors.white
-                    : isWeekend
-                        ? Colors.red
-                        : (isLight ? Colors.black : Colors.white);
-                return Container(
+              calendarBuilders: CalendarBuilders(
+                markerBuilder: (context, day, events) {
+                  if (events.isEmpty) return const SizedBox.shrink();
+                  return Positioned(
+                    bottom: 4,
+                    child: Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: isLight ? Colors.black : Colors.white,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  );
+                },
+                headerTitleBuilder: (context, date) {
+                  return GestureDetector(
+                    onTap: _pickDate,
+                    child: Text(
+                      DateFormat('MMMM d, yyyy').format(date),
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.indigo,
+                      ),
+                    ),
+                  );
+                },
+                todayBuilder: (context, day, focusedDay) => Container(
                   margin: const EdgeInsets.all(6),
                   alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                      color: bgColor, shape: BoxShape.circle),
+                  decoration: const BoxDecoration(
+                      color: Colors.green, shape: BoxShape.circle),
                   child: Text('${day.day}',
-                      style: TextStyle(
-                          color: textColor,
-                          fontWeight: hasTasks
-                              ? FontWeight.bold
-                              : FontWeight.normal)),
-                );
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold)),
+                ),
+                selectedBuilder: (context, day, focusedDay) =>
+                    Container(
+                  margin: const EdgeInsets.all(6),
+                  alignment: Alignment.center,
+                  decoration: const BoxDecoration(
+                      color: Colors.orange, shape: BoxShape.circle),
+                  child: Text('${day.day}',
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold)),
+                ),
+                defaultBuilder: (context, day, focusedDay) {
+                  final normalized = _normalizeDate(day);
+                  final dayTasks = _tasksByDate[normalized] ?? [];
+                  final hasTasks = dayTasks.isNotEmpty;
+                  final allDone =
+                      hasTasks && dayTasks.every((t) => t.isDone);
+                  final isWeekend = day.weekday == DateTime.saturday ||
+                      day.weekday == DateTime.sunday;
+                  final bgColor = allDone
+                      ? Colors.green.shade300
+                      : hasTasks
+                          ? Colors.blue
+                          : Colors.transparent;
+                  final textColor = hasTasks
+                      ? Colors.white
+                      : isWeekend
+                          ? Colors.red
+                          : (isLight ? Colors.black : Colors.white);
+                  return Container(
+                    margin: const EdgeInsets.all(6),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                        color: bgColor, shape: BoxShape.circle),
+                    child: Text('${day.day}',
+                        style: TextStyle(
+                            color: textColor,
+                            fontWeight: hasTasks
+                                ? FontWeight.bold
+                                : FontWeight.normal)),
+                  );
+                },
+              ),
+              eventLoader: (day) {
+                final normalized = _normalizeDate(day);
+                return _tasksByDate[normalized]
+                        ?.map((t) => t.title)
+                        .toList() ??
+                    [];
               },
             ),
-            eventLoader: (day) {
-              final normalized = _normalizeDate(day);
-              return _tasksByDate[normalized]
-                      ?.map((t) => t.title)
-                      .toList() ??
-                  [];
-            },
-          ),
 
-          // ── Monthly Summary Banner ─────────────────────────────────────────
-          if (mTotal > 0)
-            Container(
-              margin: const EdgeInsets.symmetric(
-                  horizontal: 12, vertical: 4),
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 14, vertical: 8),
-              decoration: BoxDecoration(
-                color: isLight
-                    ? Colors.indigo.shade50
-                    : Colors.indigo.shade900,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.calendar_month,
-                      size: 16,
-                      color: isLight
-                          ? Colors.indigo
-                          : Colors.indigo.shade200),
-                  const SizedBox(width: 8),
-                  Text(
-                    DateFormat('MMMM').format(_focusedDay),
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: isLight
-                          ? Colors.indigo
-                          : Colors.indigo.shade200,
+            // ── Monthly Summary Banner ───────────────────────────────────────
+            if (mTotal > 0)
+              Container(
+                margin: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 14, vertical: 8),
+                decoration: BoxDecoration(
+                  color: isLight
+                      ? Colors.indigo.shade50
+                      : Colors.indigo.shade900,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.calendar_month,
+                        size: 16,
+                        color: isLight
+                            ? Colors.indigo
+                            : Colors.indigo.shade200),
+                    const SizedBox(width: 8),
+                    Text(
+                      DateFormat('MMMM').format(_focusedDay),
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: isLight
+                            ? Colors.indigo
+                            : Colors.indigo.shade200,
+                      ),
                     ),
-                  ),
-                  const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: mDone == mTotal
-                          ? Colors.green
-                          : Colors.indigo.shade300,
-                      borderRadius: BorderRadius.circular(10),
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: mDone == mTotal
+                            ? Colors.green
+                            : Colors.indigo.shade300,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text('$mDone/$mTotal done',
+                          style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold)),
                     ),
-                    child: Text(
-                      '$mDone/$mTotal done',
-                      style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  SizedBox(
-                    width: 60,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(4),
-                      child: LinearProgressIndicator(
-                        value: mTotal == 0 ? 0 : mDone / mTotal,
-                        minHeight: 6,
-                        backgroundColor: isLight
-                            ? Colors.indigo.shade100
-                            : Colors.indigo.shade700,
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          mDone == mTotal
-                              ? Colors.green
-                              : Colors.indigo,
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      width: 60,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: LinearProgressIndicator(
+                          value: mTotal == 0 ? 0 : mDone / mTotal,
+                          minHeight: 6,
+                          backgroundColor: isLight
+                              ? Colors.indigo.shade100
+                              : Colors.indigo.shade700,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            mDone == mTotal
+                                ? Colors.green
+                                : Colors.indigo,
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
 
-          // ── Input Row ─────────────────────────────────────────────────────
-          Padding(
-            padding:
-                const EdgeInsets.fromLTRB(12, 12, 12, 0),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    Expanded(
+            // ── Input Row ───────────────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _controller,
+                          focusNode: _titleFocus,
+                          onSubmitted: (_) => _addTask(),
+                          textCapitalization:
+                              TextCapitalization.sentences,
+                          maxLength: kMaxTitleLength,
+                          inputFormatters: [
+                            LengthLimitingTextInputFormatter(
+                                kMaxTitleLength),
+                          ],
+                          decoration: InputDecoration(
+                            hintText: 'Add a new task...',
+                            filled: true,
+                            fillColor: isLight
+                                ? Colors.white
+                                : Colors.grey[800],
+                            contentPadding: const EdgeInsets.symmetric(
+                                vertical: 14, horizontal: 16),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide.none,
+                            ),
+                            counterText: '',
+                            suffixIcon: IconButton(
+                              icon: Icon(
+                                Icons.note_add_outlined,
+                                color: _showNoteField
+                                    ? Colors.indigo
+                                    : Colors.grey,
+                                size: 20,
+                              ),
+                              tooltip: 'Add note',
+                              onPressed: () => setState(() =>
+                                  _showNoteField = !_showNoteField),
+                            ),
+                          ),
+                          style: TextStyle(
+                              color: isLight
+                                  ? Colors.black
+                                  : Colors.white),
+                          buildCounter: (context,
+                              {required currentLength,
+                              required isFocused,
+                              maxLength}) {
+                            if (currentLength > 80) {
+                              return Text(
+                                '$currentLength/$maxLength',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: currentLength >= kMaxTitleLength
+                                      ? Colors.red
+                                      : Colors.grey,
+                                ),
+                              );
+                            }
+                            return null;
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.indigo,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                          padding: const EdgeInsets.symmetric(
+                              vertical: 14, horizontal: 20),
+                        ),
+                        onPressed: _addTask,
+                        child: const Text('Add',
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold)),
+                      ),
+                    ],
+                  ),
+                  AnimatedCrossFade(
+                    duration: const Duration(milliseconds: 250),
+                    firstChild: const SizedBox(height: 8),
+                    secondChild: Padding(
+                      padding: const EdgeInsets.only(top: 8),
                       child: TextField(
-                        controller: _controller,
-                        onSubmitted: (_) => _addTask(),
+                        controller: _noteController,
+                        focusNode: _noteFocus,
+                        maxLines: 2,
                         textCapitalization:
                             TextCapitalization.sentences,
-                        maxLength: kMaxTitleLength,
-                        inputFormatters: [
-                          LengthLimitingTextInputFormatter(
-                              kMaxTitleLength),
-                        ],
                         decoration: InputDecoration(
-                          hintText: 'Add a new task...',
+                          hintText: 'Add a note (optional)...',
                           filled: true,
                           fillColor: isLight
                               ? Colors.white
                               : Colors.grey[800],
-                          contentPadding:
-                              const EdgeInsets.symmetric(
-                                  vertical: 14, horizontal: 16),
+                          contentPadding: const EdgeInsets.symmetric(
+                              vertical: 10, horizontal: 16),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
                             borderSide: BorderSide.none,
                           ),
-                          counterText: '',
-                          // ── Toggle note field button ───────────────────
-                          suffixIcon: IconButton(
-                            icon: Icon(
-                              Icons.note_add_outlined,
-                              color: _showNoteField
-                                  ? Colors.indigo
-                                  : Colors.grey,
-                              size: 20,
-                            ),
-                            tooltip: 'Add note',
-                            onPressed: () => setState(
-                                () => _showNoteField = !_showNoteField),
-                          ),
                         ),
                         style: TextStyle(
                             color:
-                                isLight ? Colors.black : Colors.white),
-                        buildCounter: (context,
-                            {required currentLength,
-                            required isFocused,
-                            maxLength}) {
-                          if (currentLength > 80) {
-                            return Text(
-                              '$currentLength/$maxLength',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color:
-                                    currentLength >= kMaxTitleLength
-                                        ? Colors.red
-                                        : Colors.grey,
-                              ),
-                            );
-                          }
-                          return null;
-                        },
+                                isLight ? Colors.black : Colors.white,
+                            fontSize: 13),
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.indigo,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12)),
-                        padding: const EdgeInsets.symmetric(
-                            vertical: 14, horizontal: 20),
-                      ),
-                      onPressed: _addTask,
-                      child: const Text('Add',
-                          style:
-                              TextStyle(fontWeight: FontWeight.bold)),
-                    ),
-                  ],
-                ),
-                // ── Animated Note Field ──────────────────────────────────
-                AnimatedCrossFade(
-                  duration: const Duration(milliseconds: 250),
-                  firstChild: const SizedBox(height: 8),
-                  secondChild: Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: TextField(
-                      controller: _noteController,
-                      maxLines: 2,
-                      textCapitalization:
-                          TextCapitalization.sentences,
-                      decoration: InputDecoration(
-                        hintText: 'Add a note (optional)...',
-                        filled: true,
-                        fillColor:
-                            isLight ? Colors.white : Colors.grey[800],
-                        contentPadding: const EdgeInsets.symmetric(
-                            vertical: 10, horizontal: 16),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                      style: TextStyle(
-                          color:
-                              isLight ? Colors.black : Colors.white,
-                          fontSize: 13),
-                    ),
-                  ),
-                  crossFadeState: _showNoteField
-                      ? CrossFadeState.showSecond
-                      : CrossFadeState.showFirst,
-                ),
-              ],
-            ),
-          ),
-
-          // ── Progress Bar ──────────────────────────────────────────────────
-          if (totalCount > 0)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-              child: Column(
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        '$doneCount/$totalCount done',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: isLight
-                              ? Colors.black54
-                              : Colors.white54,
-                        ),
-                      ),
-                      Text(
-                        '${(progress * 100).toStringAsFixed(0)}%',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                          color: progress == 1.0
-                              ? Colors.green
-                              : Colors.indigo,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: LinearProgressIndicator(
-                      value: progress,
-                      minHeight: 8,
-                      backgroundColor: isLight
-                          ? Colors.grey.shade300
-                          : Colors.grey.shade700,
-                      valueColor: AlwaysStoppedAnimation<Color>(
-                        progress == 1.0
-                            ? Colors.green
-                            : Colors.indigo,
-                      ),
-                    ),
+                    crossFadeState: _showNoteField
+                        ? CrossFadeState.showSecond
+                        : CrossFadeState.showFirst,
                   ),
                 ],
               ),
             ),
 
-          // ── Task List (AnimatedList) ───────────────────────────────────────
-          Expanded(
-            child: tasks.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
+            // ── Progress Bar ─────────────────────────────────────────────────
+            if (totalCount > 0)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                child: Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment:
+                          MainAxisAlignment.spaceBetween,
                       children: [
-                        Icon(Icons.check_circle_outline,
-                            size: 72,
+                        Text(
+                          '$doneCount/$totalCount done',
+                          style: TextStyle(
+                            fontSize: 13,
                             color: isLight
-                                ? Colors.grey.shade300
-                                : Colors.grey.shade700),
-                        const SizedBox(height: 16),
-                        Text(
-                          'No tasks for this day',
-                          style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w500,
-                              color: isLight
-                                  ? Colors.black54
-                                  : Colors.white54),
+                                ? Colors.black54
+                                : Colors.white54,
+                          ),
                         ),
-                        const SizedBox(height: 6),
                         Text(
-                          'Tap the field above to add one!',
+                          '${(progress * 100).toStringAsFixed(0)}%',
                           style: TextStyle(
-                              fontSize: 13,
-                              color: isLight
-                                  ? Colors.black38
-                                  : Colors.white38),
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: progress == 1.0
+                                ? Colors.green
+                                : Colors.indigo,
+                          ),
                         ),
                       ],
                     ),
-                  )
-                : RefreshIndicator(
-                    onRefresh: _onRefresh,
-                    color: Colors.indigo,
-                    child: AnimatedList(
-                      key: _listKey,
-                      physics:
-                          const AlwaysScrollableScrollPhysics(),
-                      initialItemCount: tasks.length,
-                      itemBuilder: (context, index, animation) {
-                        if (index >= tasks.length) {
-                          return const SizedBox.shrink();
-                        }
-                        final task = tasks[index];
-                        final Color cardColor = task.isDone
-                            ? (isLight
-                                ? Colors.green.shade100
-                                : Colors.green.shade800)
-                            : (isLight
-                                ? Colors.white
-                                : Colors.grey.shade900);
+                    const SizedBox(height: 4),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: LinearProgressIndicator(
+                        value: progress,
+                        minHeight: 8,
+                        backgroundColor: isLight
+                            ? Colors.grey.shade300
+                            : Colors.grey.shade700,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          progress == 1.0
+                              ? Colors.green
+                              : Colors.indigo,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
 
-                        return SizeTransition(
-                          sizeFactor: CurvedAnimation(
-                            parent: animation,
-                            curve: Curves.easeInOut,
+            // ── Task List ───────────────────────────────────────────────────
+            Expanded(
+              child: tasks.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.check_circle_outline,
+                              size: 72,
+                              color: isLight
+                                  ? Colors.grey.shade300
+                                  : Colors.grey.shade700),
+                          const SizedBox(height: 16),
+                          Text(
+                            'No tasks for this day',
+                            style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w500,
+                                color: isLight
+                                    ? Colors.black54
+                                    : Colors.white54),
                           ),
-                          child: FadeTransition(
-                            opacity: animation,
-                            child: Dismissible(
-                              key: ValueKey(
-                                  '${_normalizeDate(_selectedDay)}_${task.title}_${task.isDone}'),
-                              direction:
-                                  DismissDirection.endToStart,
-                              background: Container(
-                                alignment: Alignment.centerRight,
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 20),
-                                margin: const EdgeInsets.symmetric(
-                                    horizontal: 12, vertical: 6),
-                                decoration: BoxDecoration(
-                                  color: Colors.red,
-                                  borderRadius:
-                                      BorderRadius.circular(12),
-                                ),
-                                child: const Icon(Icons.delete,
-                                    color: Colors.white, size: 28),
-                              ),
-                              confirmDismiss: (_) async => true,
-                              onDismissed: (_) => _removeTask(index),
-                              child: GestureDetector(
-                                onLongPress: () =>
-                                    _showNoteDialog(task),
-                                child: Card(
+                          const SizedBox(height: 6),
+                          Text(
+                            'Tap the field above to add one!',
+                            style: TextStyle(
+                                fontSize: 13,
+                                color: isLight
+                                    ? Colors.black38
+                                    : Colors.white38),
+                          ),
+                        ],
+                      ),
+                    )
+                  : RefreshIndicator(
+                      onRefresh: _onRefresh,
+                      color: Colors.indigo,
+                      child: AnimatedList(
+                        key: _listKey,
+                        physics:
+                            const AlwaysScrollableScrollPhysics(),
+                        initialItemCount: tasks.length,
+                        itemBuilder: (context, index, animation) {
+                          if (index >= tasks.length) {
+                            return const SizedBox.shrink();
+                          }
+                          final task = tasks[index];
+                          final Color cardColor = task.isDone
+                              ? (isLight
+                                  ? Colors.green.shade100
+                                  : Colors.green.shade800)
+                              : (isLight
+                                  ? Colors.white
+                                  : Colors.grey.shade900);
+
+                          return SizeTransition(
+                            sizeFactor: CurvedAnimation(
+                              parent: animation,
+                              curve: Curves.easeInOut,
+                            ),
+                            child: FadeTransition(
+                              opacity: animation,
+                              child: Dismissible(
+                                key: ValueKey(
+                                    '${_normalizeDate(_selectedDay)}_${task.title}_${task.isDone}'),
+                                direction:
+                                    DismissDirection.endToStart,
+                                background: Container(
+                                  alignment: Alignment.centerRight,
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 20),
                                   margin: const EdgeInsets.symmetric(
                                       horizontal: 12, vertical: 6),
-                                  shape: RoundedRectangleBorder(
-                                      borderRadius:
-                                          BorderRadius.circular(12)),
-                                  elevation: 3,
-                                  color: cardColor,
-                                  child: ListTile(
-                                    leading: Checkbox(
-                                      value: task.isDone,
-                                      activeColor: Colors.indigo,
-                                      shape: RoundedRectangleBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(
-                                                  4)),
-                                      onChanged: (_) =>
-                                          _toggleDone(index),
-                                    ),
-                                    title: Text(
-                                      task.title,
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        color: task.isDone
-                                            ? (isLight
-                                                ? Colors.black54
-                                                : Colors.white70)
-                                            : (isLight
-                                                ? Colors.black
-                                                : Colors.white),
-                                        decoration: task.isDone
-                                            ? TextDecoration
-                                                .lineThrough
-                                            : TextDecoration.none,
+                                  decoration: BoxDecoration(
+                                    color: Colors.red,
+                                    borderRadius:
+                                        BorderRadius.circular(12),
+                                  ),
+                                  child: const Icon(Icons.delete,
+                                      color: Colors.white, size: 28),
+                                ),
+                                confirmDismiss: (_) async => true,
+                                onDismissed: (_) =>
+                                    _removeTask(index),
+                                child: GestureDetector(
+                                  onLongPress: () =>
+                                      _showNoteDialog(task),
+                                  child: Card(
+                                    margin: const EdgeInsets.symmetric(
+                                        horizontal: 12, vertical: 6),
+                                    shape: RoundedRectangleBorder(
+                                        borderRadius:
+                                            BorderRadius.circular(12)),
+                                    elevation: 3,
+                                    color: cardColor,
+                                    child: ListTile(
+                                      leading: Checkbox(
+                                        value: task.isDone,
+                                        activeColor: Colors.indigo,
+                                        shape: RoundedRectangleBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(
+                                                    4)),
+                                        onChanged: (_) =>
+                                            _toggleDone(index),
                                       ),
-                                    ),
-                                    subtitle: task.note.isNotEmpty
-                                        ? Row(
-                                            children: [
-                                              Expanded(
-                                                child: Text(
-                                                  task.note,
-                                                  maxLines: 1,
-                                                  overflow: TextOverflow
-                                                      .ellipsis,
-                                                  style: TextStyle(
-                                                    fontSize: 12,
-                                                    color: task.isDone
-                                                        ? (isLight
-                                                            ? Colors
-                                                                .black45
-                                                            : Colors
-                                                                .white54)
-                                                        : (isLight
-                                                            ? Colors
-                                                                .black45
-                                                            : Colors
-                                                                .white38),
+                                      title: Text(
+                                        task.title,
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          color: task.isDone
+                                              ? (isLight
+                                                  ? Colors.black54
+                                                  : Colors.white70)
+                                              : (isLight
+                                                  ? Colors.black
+                                                  : Colors.white),
+                                          decoration: task.isDone
+                                              ? TextDecoration
+                                                  .lineThrough
+                                              : TextDecoration.none,
+                                        ),
+                                      ),
+                                      subtitle: task.note.isNotEmpty
+                                          ? Row(
+                                              children: [
+                                                Expanded(
+                                                  child: Text(
+                                                    task.note,
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow
+                                                            .ellipsis,
+                                                    style: TextStyle(
+                                                      fontSize: 12,
+                                                      color: task.isDone
+                                                          ? (isLight
+                                                              ? Colors
+                                                                  .black45
+                                                              : Colors
+                                                                  .white54)
+                                                          : (isLight
+                                                              ? Colors
+                                                                  .black45
+                                                              : Colors
+                                                                  .white38),
+                                                    ),
                                                   ),
                                                 ),
-                                              ),
-                                              Icon(
-                                                  Icons.open_in_full,
-                                                  size: 11,
-                                                  color: isLight
-                                                      ? Colors.black26
-                                                      : Colors
-                                                          .white24),
-                                            ],
-                                          )
-                                        : null,
-                                    trailing: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        IconButton(
-                                          icon: const Icon(Icons.edit,
-                                              color: Colors.blue),
-                                          onPressed: () =>
-                                              _editTask(index),
-                                        ),
-                                        IconButton(
-                                          icon: const Icon(
-                                              Icons.delete,
-                                              color: Colors.red),
-                                          onPressed: () =>
-                                              _confirmDelete(index),
-                                        ),
-                                      ],
+                                                Icon(
+                                                    Icons.open_in_full,
+                                                    size: 11,
+                                                    color: isLight
+                                                        ? Colors.black26
+                                                        : Colors
+                                                            .white24),
+                                              ],
+                                            )
+                                          : null,
+                                      trailing: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          IconButton(
+                                            icon: const Icon(Icons.edit,
+                                                color: Colors.blue),
+                                            onPressed: () =>
+                                                _editTask(index),
+                                          ),
+                                          IconButton(
+                                            icon: const Icon(
+                                                Icons.delete,
+                                                color: Colors.red),
+                                            onPressed: () =>
+                                                _confirmDelete(index),
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   ),
                                 ),
                               ),
                             ),
-                          ),
-                        );
-                      },
+                          );
+                        },
+                      ),
                     ),
-                  ),
-          ),
-        ],
+            ),
+          ],
+        ),
       ),
     );
   }
