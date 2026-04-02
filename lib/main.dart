@@ -77,7 +77,6 @@ class _ToDoAppState extends State<ToDoApp> {
         debugShowCheckedModeBanner: false,
       );
     }
-
     return MaterialApp(
       title: 'KiroTask',
       debugShowCheckedModeBanner: false,
@@ -206,11 +205,8 @@ class _ToDoHomeState extends State<ToDoHome> {
   final Map<DateTime, List<Task>> _tasksByDate = {};
   final TextEditingController _controller = TextEditingController();
   final TextEditingController _noteController = TextEditingController();
-
-  // ── FocusNodes to dismiss keyboard ────────────────────────────────────────
   final FocusNode _titleFocus = FocusNode();
   final FocusNode _noteFocus = FocusNode();
-
   bool _showNoteField = false;
   DateTime _selectedDay = DateTime.now();
   DateTime _focusedDay = DateTime.now();
@@ -218,7 +214,6 @@ class _ToDoHomeState extends State<ToDoHome> {
   final GlobalKey<AnimatedListState> _listKey =
       GlobalKey<AnimatedListState>();
 
-  /// Dismiss keyboard everywhere
   void _dismissKeyboard() {
     _titleFocus.unfocus();
     _noteFocus.unfocus();
@@ -330,19 +325,15 @@ class _ToDoHomeState extends State<ToDoHome> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(16),
-              child: Image.asset(
-                'assets/icon/KiroTask.png',
-                width: 72,
-                height: 72,
-                fit: BoxFit.cover,
-              ),
+              child: Image.asset('assets/icon/KiroTask.png',
+                  width: 72, height: 72, fit: BoxFit.cover),
             ),
             const SizedBox(height: 16),
             const Text('KiroTask',
@@ -355,13 +346,21 @@ class _ToDoHomeState extends State<ToDoHome> {
             const SizedBox(height: 16),
             const Divider(),
             const SizedBox(height: 8),
-            _infoRow(Icons.person_outline, 'Developer', 'Dave Bangcoyo'),
+            _infoRow(
+                Icons.person_outline, 'Developer', 'Dave Bangcoyo'),
             const SizedBox(height: 8),
             _infoRow(Icons.calendar_today_outlined, 'Built with',
                 'Flutter & Dart'),
             const SizedBox(height: 8),
             _infoRow(Icons.storage_outlined, 'Storage',
                 'SharedPreferences (local)'),
+            const SizedBox(height: 16),
+            const Divider(),
+            const SizedBox(height: 8),
+            // ── Swipe hint in About ────────────────────────────────────
+            _infoRow(Icons.swipe_right_alt, 'Swipe Right', 'Delete task'),
+            const SizedBox(height: 8),
+            _infoRow(Icons.swipe_left_alt, 'Swipe Left', 'Edit task'),
           ],
         ),
         actions: [
@@ -420,8 +419,8 @@ class _ToDoHomeState extends State<ToDoHome> {
                 Text(
                   'You completed all tasks for ${DateFormat('MMMM d').format(_selectedDay)}. Great job!',
                   textAlign: TextAlign.center,
-                  style:
-                      const TextStyle(fontSize: 14, color: Colors.grey),
+                  style: const TextStyle(
+                      fontSize: 14, color: Colors.grey),
                 ),
               ],
             ),
@@ -556,13 +555,12 @@ class _ToDoHomeState extends State<ToDoHome> {
       );
       return;
     }
-
     final title = _capitalizeFirst(raw);
     final note = _noteController.text.trim();
     final key = _normalizeDate(_selectedDay);
     final existing = _tasksByDate[key] ?? [];
-    final isDuplicate =
-        existing.any((t) => t.title.toLowerCase() == title.toLowerCase());
+    final isDuplicate = existing
+        .any((t) => t.title.toLowerCase() == title.toLowerCase());
 
     if (isDuplicate) {
       showDialog(
@@ -594,18 +592,15 @@ class _ToDoHomeState extends State<ToDoHome> {
   void _doAddTask(String title, String note) {
     final key = _normalizeDate(_selectedDay);
     final newTask = Task(title: title, note: note);
-
     setState(() {
       _tasksByDate.putIfAbsent(key, () => []);
       _tasksByDate[key]!.add(newTask);
       _congratsShown.remove(key);
     });
-
     final sortedTasks = _selectedTasks;
     final insertIndex = sortedTasks.indexOf(newTask);
     _listKey.currentState
         ?.insertItem(insertIndex < 0 ? 0 : insertIndex);
-
     _saveTasks();
     _controller.clear();
     _noteController.clear();
@@ -651,7 +646,6 @@ class _ToDoHomeState extends State<ToDoHome> {
       (context, animation) =>
           _buildAnimatedCard(taskToRemove, animation),
     );
-
     setState(() {
       if (rawIndex != -1) _tasksByDate[key]!.removeAt(rawIndex);
       _congratsShown.remove(key);
@@ -702,7 +696,8 @@ class _ToDoHomeState extends State<ToDoHome> {
     final task = _selectedTasks[index];
     final rawIndex = _rawTasks.indexOf(task);
     final editController = TextEditingController(text: task.title);
-    final noteEditController = TextEditingController(text: task.note);
+    final noteEditController =
+        TextEditingController(text: task.note);
 
     showDialog(
       context: context,
@@ -781,8 +776,8 @@ class _ToDoHomeState extends State<ToDoHome> {
         : (isLight ? Colors.white : Colors.grey.shade900);
 
     return SizeTransition(
-      sizeFactor: CurvedAnimation(
-          parent: animation, curve: Curves.easeInOut),
+      sizeFactor:
+          CurvedAnimation(parent: animation, curve: Curves.easeInOut),
       child: FadeTransition(
         opacity: animation,
         child: Card(
@@ -829,7 +824,6 @@ class _ToDoHomeState extends State<ToDoHome> {
     final mDone = _monthDoneTasks;
 
     return GestureDetector(
-      // ── Tap anywhere outside → dismiss keyboard ──────────────────────────
       onTap: _dismissKeyboard,
       behavior: HitTestBehavior.translucent,
       child: Scaffold(
@@ -887,7 +881,7 @@ class _ToDoHomeState extends State<ToDoHome> {
         ),
         body: Column(
           children: [
-            // ── Calendar ────────────────────────────────────────────────────
+            // ── Calendar ──────────────────────────────────────────────────
             TableCalendar(
               firstDay: DateTime.utc(2020, 1, 1),
               lastDay: DateTime.utc(2030, 12, 31),
@@ -972,8 +966,9 @@ class _ToDoHomeState extends State<ToDoHome> {
                   final hasTasks = dayTasks.isNotEmpty;
                   final allDone =
                       hasTasks && dayTasks.every((t) => t.isDone);
-                  final isWeekend = day.weekday == DateTime.saturday ||
-                      day.weekday == DateTime.sunday;
+                  final isWeekend =
+                      day.weekday == DateTime.saturday ||
+                          day.weekday == DateTime.sunday;
                   final bgColor = allDone
                       ? Colors.green.shade300
                       : hasTasks
@@ -1007,7 +1002,7 @@ class _ToDoHomeState extends State<ToDoHome> {
               },
             ),
 
-            // ── Monthly Summary Banner ───────────────────────────────────────
+            // ── Monthly Summary Banner ─────────────────────────────────────
             if (mTotal > 0)
               Container(
                 margin: const EdgeInsets.symmetric(
@@ -1060,7 +1055,8 @@ class _ToDoHomeState extends State<ToDoHome> {
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(4),
                         child: LinearProgressIndicator(
-                          value: mTotal == 0 ? 0 : mDone / mTotal,
+                          value:
+                              mTotal == 0 ? 0 : mDone / mTotal,
                           minHeight: 6,
                           backgroundColor: isLight
                               ? Colors.indigo.shade100
@@ -1077,9 +1073,10 @@ class _ToDoHomeState extends State<ToDoHome> {
                 ),
               ),
 
-            // ── Input Row ───────────────────────────────────────────────────
+            // ── Input Row ─────────────────────────────────────────────────
             Padding(
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+              padding:
+                  const EdgeInsets.fromLTRB(12, 12, 12, 0),
               child: Column(
                 children: [
                   Row(
@@ -1102,10 +1099,12 @@ class _ToDoHomeState extends State<ToDoHome> {
                             fillColor: isLight
                                 ? Colors.white
                                 : Colors.grey[800],
-                            contentPadding: const EdgeInsets.symmetric(
-                                vertical: 14, horizontal: 16),
+                            contentPadding:
+                                const EdgeInsets.symmetric(
+                                    vertical: 14, horizontal: 16),
                             border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius:
+                                  BorderRadius.circular(12),
                               borderSide: BorderSide.none,
                             ),
                             counterText: '',
@@ -1119,7 +1118,8 @@ class _ToDoHomeState extends State<ToDoHome> {
                               ),
                               tooltip: 'Add note',
                               onPressed: () => setState(() =>
-                                  _showNoteField = !_showNoteField),
+                                  _showNoteField =
+                                      !_showNoteField),
                             ),
                           ),
                           style: TextStyle(
@@ -1135,7 +1135,8 @@ class _ToDoHomeState extends State<ToDoHome> {
                                 '$currentLength/$maxLength',
                                 style: TextStyle(
                                   fontSize: 11,
-                                  color: currentLength >= kMaxTitleLength
+                                  color: currentLength >=
+                                          kMaxTitleLength
                                       ? Colors.red
                                       : Colors.grey,
                                 ),
@@ -1151,7 +1152,8 @@ class _ToDoHomeState extends State<ToDoHome> {
                           backgroundColor: Colors.indigo,
                           foregroundColor: Colors.white,
                           shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12)),
+                              borderRadius:
+                                  BorderRadius.circular(12)),
                           padding: const EdgeInsets.symmetric(
                               vertical: 14, horizontal: 20),
                         ),
@@ -1179,16 +1181,19 @@ class _ToDoHomeState extends State<ToDoHome> {
                           fillColor: isLight
                               ? Colors.white
                               : Colors.grey[800],
-                          contentPadding: const EdgeInsets.symmetric(
-                              vertical: 10, horizontal: 16),
+                          contentPadding:
+                              const EdgeInsets.symmetric(
+                                  vertical: 10, horizontal: 16),
                           border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius:
+                                BorderRadius.circular(12),
                             borderSide: BorderSide.none,
                           ),
                         ),
                         style: TextStyle(
-                            color:
-                                isLight ? Colors.black : Colors.white,
+                            color: isLight
+                                ? Colors.black
+                                : Colors.white,
                             fontSize: 13),
                       ),
                     ),
@@ -1200,10 +1205,11 @@ class _ToDoHomeState extends State<ToDoHome> {
               ),
             ),
 
-            // ── Progress Bar ─────────────────────────────────────────────────
+            // ── Progress Bar ───────────────────────────────────────────────
             if (totalCount > 0)
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                padding:
+                    const EdgeInsets.fromLTRB(16, 8, 16, 8),
                 child: Column(
                   children: [
                     Row(
@@ -1251,7 +1257,7 @@ class _ToDoHomeState extends State<ToDoHome> {
                 ),
               ),
 
-            // ── Task List ───────────────────────────────────────────────────
+            // ── Task List ─────────────────────────────────────────────────
             Expanded(
               child: tasks.isEmpty
                   ? Center(
@@ -1293,7 +1299,8 @@ class _ToDoHomeState extends State<ToDoHome> {
                         physics:
                             const AlwaysScrollableScrollPhysics(),
                         initialItemCount: tasks.length,
-                        itemBuilder: (context, index, animation) {
+                        itemBuilder:
+                            (context, index, animation) {
                           if (index >= tasks.length) {
                             return const SizedBox.shrink();
                           }
@@ -1313,47 +1320,165 @@ class _ToDoHomeState extends State<ToDoHome> {
                             ),
                             child: FadeTransition(
                               opacity: animation,
+                              // ── Dual Swipe Dismissible ─────────────────
                               child: Dismissible(
                                 key: ValueKey(
                                     '${_normalizeDate(_selectedDay)}_${task.title}_${task.isDone}'),
+                                // Both directions enabled
                                 direction:
-                                    DismissDirection.endToStart,
+                                    DismissDirection.horizontal,
+                                // Background: swipe RIGHT → Delete (red)
                                 background: Container(
-                                  alignment: Alignment.centerRight,
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 20),
-                                  margin: const EdgeInsets.symmetric(
-                                      horizontal: 12, vertical: 6),
+                                  alignment:
+                                      Alignment.centerLeft,
+                                  padding:
+                                      const EdgeInsets.symmetric(
+                                          horizontal: 20),
+                                  margin:
+                                      const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 6),
                                   decoration: BoxDecoration(
                                     color: Colors.red,
                                     borderRadius:
                                         BorderRadius.circular(12),
                                   ),
-                                  child: const Icon(Icons.delete,
-                                      color: Colors.white, size: 28),
+                                  child: const Row(
+                                    mainAxisSize:
+                                        MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.delete,
+                                          color: Colors.white,
+                                          size: 24),
+                                      SizedBox(width: 6),
+                                      Text('Delete',
+                                          style: TextStyle(
+                                              color: Colors.white,
+                                              fontWeight:
+                                                  FontWeight.bold,
+                                              fontSize: 13)),
+                                    ],
+                                  ),
                                 ),
-                                confirmDismiss: (_) async => true,
-                                onDismissed: (_) =>
-                                    _removeTask(index),
+                                // Secondary background: swipe LEFT → Edit (blue)
+                                secondaryBackground: Container(
+                                  alignment:
+                                      Alignment.centerRight,
+                                  padding:
+                                      const EdgeInsets.symmetric(
+                                          horizontal: 20),
+                                  margin:
+                                      const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: Colors.blue,
+                                    borderRadius:
+                                        BorderRadius.circular(12),
+                                  ),
+                                  child: const Row(
+                                    mainAxisSize:
+                                        MainAxisSize.min,
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.end,
+                                    children: [
+                                      Text('Edit',
+                                          style: TextStyle(
+                                              color: Colors.white,
+                                              fontWeight:
+                                                  FontWeight.bold,
+                                              fontSize: 13)),
+                                      SizedBox(width: 6),
+                                      Icon(Icons.edit,
+                                          color: Colors.white,
+                                          size: 24),
+                                    ],
+                                  ),
+                                ),
+                                confirmDismiss:
+                                    (direction) async {
+                                  if (direction ==
+                                      DismissDirection
+                                          .startToEnd) {
+                                    // Swipe right → confirm delete
+                                    bool confirm = false;
+                                    await showDialog(
+                                      context: context,
+                                      builder: (ctx) =>
+                                          AlertDialog(
+                                        title: const Text(
+                                            'Delete Task'),
+                                        content: Text(
+                                            'Are you sure you want to delete "${task.title}"?'),
+                                        actions: [
+                                          TextButton(
+                                            onPressed: () {
+                                              confirm = false;
+                                              Navigator.pop(
+                                                  ctx);
+                                            },
+                                            child: const Text(
+                                                'Cancel'),
+                                          ),
+                                          ElevatedButton(
+                                            style: ElevatedButton
+                                                .styleFrom(
+                                                    backgroundColor:
+                                                        Colors
+                                                            .red),
+                                            onPressed: () {
+                                              confirm = true;
+                                              Navigator.pop(
+                                                  ctx);
+                                            },
+                                            child: const Text(
+                                                'Delete',
+                                                style: TextStyle(
+                                                    color: Colors
+                                                        .white)),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                    return confirm;
+                                  } else {
+                                    // Swipe left → open edit, don't dismiss
+                                    _editTask(index);
+                                    return false;
+                                  }
+                                },
+                                onDismissed: (direction) {
+                                  if (direction ==
+                                      DismissDirection
+                                          .startToEnd) {
+                                    _removeTask(index);
+                                  }
+                                },
                                 child: GestureDetector(
                                   onLongPress: () =>
                                       _showNoteDialog(task),
                                   child: Card(
-                                    margin: const EdgeInsets.symmetric(
-                                        horizontal: 12, vertical: 6),
+                                    margin: const EdgeInsets
+                                        .symmetric(
+                                        horizontal: 12,
+                                        vertical: 6),
                                     shape: RoundedRectangleBorder(
                                         borderRadius:
-                                            BorderRadius.circular(12)),
+                                            BorderRadius.circular(
+                                                12)),
                                     elevation: 3,
                                     color: cardColor,
                                     child: ListTile(
                                       leading: Checkbox(
                                         value: task.isDone,
-                                        activeColor: Colors.indigo,
-                                        shape: RoundedRectangleBorder(
-                                            borderRadius:
-                                                BorderRadius.circular(
-                                                    4)),
+                                        activeColor:
+                                            Colors.indigo,
+                                        shape:
+                                            RoundedRectangleBorder(
+                                                borderRadius:
+                                                    BorderRadius
+                                                        .circular(
+                                                            4)),
                                         onChanged: (_) =>
                                             _toggleDone(index),
                                       ),
@@ -1371,50 +1496,59 @@ class _ToDoHomeState extends State<ToDoHome> {
                                           decoration: task.isDone
                                               ? TextDecoration
                                                   .lineThrough
-                                              : TextDecoration.none,
+                                              : TextDecoration
+                                                  .none,
                                         ),
                                       ),
-                                      subtitle: task.note.isNotEmpty
-                                          ? Row(
-                                              children: [
-                                                Expanded(
-                                                  child: Text(
-                                                    task.note,
-                                                    maxLines: 1,
-                                                    overflow:
-                                                        TextOverflow
-                                                            .ellipsis,
-                                                    style: TextStyle(
-                                                      fontSize: 12,
-                                                      color: task.isDone
-                                                          ? (isLight
-                                                              ? Colors
-                                                                  .black45
-                                                              : Colors
-                                                                  .white54)
-                                                          : (isLight
-                                                              ? Colors
-                                                                  .black45
-                                                              : Colors
-                                                                  .white38),
+                                      subtitle:
+                                          task.note.isNotEmpty
+                                              ? Row(
+                                                  children: [
+                                                    Expanded(
+                                                      child: Text(
+                                                        task.note,
+                                                        maxLines: 1,
+                                                        overflow:
+                                                            TextOverflow
+                                                                .ellipsis,
+                                                        style:
+                                                            TextStyle(
+                                                          fontSize:
+                                                              12,
+                                                          color: task
+                                                                  .isDone
+                                                              ? (isLight
+                                                                  ? Colors
+                                                                      .black45
+                                                                  : Colors
+                                                                      .white54)
+                                                              : (isLight
+                                                                  ? Colors
+                                                                      .black45
+                                                                  : Colors
+                                                                      .white38),
+                                                        ),
+                                                      ),
                                                     ),
-                                                  ),
-                                                ),
-                                                Icon(
-                                                    Icons.open_in_full,
-                                                    size: 11,
-                                                    color: isLight
-                                                        ? Colors.black26
-                                                        : Colors
-                                                            .white24),
-                                              ],
-                                            )
-                                          : null,
+                                                    Icon(
+                                                        Icons
+                                                            .open_in_full,
+                                                        size: 11,
+                                                        color: isLight
+                                                            ? Colors
+                                                                .black26
+                                                            : Colors
+                                                                .white24),
+                                                  ],
+                                                )
+                                              : null,
                                       trailing: Row(
-                                        mainAxisSize: MainAxisSize.min,
+                                        mainAxisSize:
+                                            MainAxisSize.min,
                                         children: [
                                           IconButton(
-                                            icon: const Icon(Icons.edit,
+                                            icon: const Icon(
+                                                Icons.edit,
                                                 color: Colors.blue),
                                             onPressed: () =>
                                                 _editTask(index),
@@ -1424,7 +1558,8 @@ class _ToDoHomeState extends State<ToDoHome> {
                                                 Icons.delete,
                                                 color: Colors.red),
                                             onPressed: () =>
-                                                _confirmDelete(index),
+                                                _confirmDelete(
+                                                    index),
                                           ),
                                         ],
                                       ),
