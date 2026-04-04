@@ -14,19 +14,33 @@ class Task {
   String title;
   String note;
   bool isDone;
+  bool isPinned;           // NEW: pinned/starred
+  DateTime createdAt;      // NEW: creation date
 
-  Task({required this.title, this.note = '', this.isDone = false});
+  Task({
+    required this.title,
+    this.note = '',
+    this.isDone = false,
+    this.isPinned = false,
+    DateTime? createdAt,
+  }) : createdAt = createdAt ?? DateTime.now();
 
   Map<String, dynamic> toJson() => {
         'title': title,
         'note': note,
         'isDone': isDone,
+        'isPinned': isPinned,
+        'createdAt': createdAt.toIso8601String(),
       };
 
   factory Task.fromJson(Map<String, dynamic> json) => Task(
         title: (json['title'] ?? '').toString(),
         note: (json['note'] ?? '').toString(),
         isDone: json['isDone'] == true,
+        isPinned: json['isPinned'] == true,
+        createdAt: json['createdAt'] != null
+            ? DateTime.tryParse(json['createdAt'].toString()) ?? DateTime.now()
+            : DateTime.now(),
       );
 }
 
@@ -166,20 +180,16 @@ class _SplashScreenState extends State<SplashScreen>
                   ),
                 ),
                 const SizedBox(height: 24),
-                const Text(
-                  'KiroTask',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1.2,
-                  ),
-                ),
+                const Text('KiroTask',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1.2)),
                 const SizedBox(height: 8),
-                const Text(
-                  'Stay organized, stay on track.',
-                  style: TextStyle(color: Colors.white70, fontSize: 14),
-                ),
+                const Text('Stay organized, stay on track.',
+                    style:
+                        TextStyle(color: Colors.white70, fontSize: 14)),
               ],
             ),
           ),
@@ -223,11 +233,23 @@ class _ToDoHomeState extends State<ToDoHome> {
   DateTime _normalizeDate(DateTime date) =>
       DateTime(date.year, date.month, date.day);
 
+  /// Sort order: pinned first, then undone, then done
   List<Task> get _selectedTasks {
     final all = _tasksByDate[_normalizeDate(_selectedDay)] ?? [];
-    final undone = all.where((t) => !t.isDone).toList();
-    final done = all.where((t) => t.isDone).toList();
-    return [...undone, ...done];
+    final pinnedUndone =
+        all.where((t) => t.isPinned && !t.isDone).toList();
+    final unpinnedUndone =
+        all.where((t) => !t.isPinned && !t.isDone).toList();
+    final pinnedDone =
+        all.where((t) => t.isPinned && t.isDone).toList();
+    final unpinnedDone =
+        all.where((t) => !t.isPinned && t.isDone).toList();
+    return [
+      ...pinnedUndone,
+      ...unpinnedUndone,
+      ...pinnedDone,
+      ...unpinnedDone,
+    ];
   }
 
   List<Task> get _rawTasks =>
@@ -236,6 +258,18 @@ class _ToDoHomeState extends State<ToDoHome> {
   String _capitalizeFirst(String text) {
     if (text.isEmpty) return text;
     return text[0].toUpperCase() + text.substring(1);
+  }
+
+  /// Format creation date nicely
+  String _formatCreatedAt(DateTime dt) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final taskDay = DateTime(dt.year, dt.month, dt.day);
+    final diff = today.difference(taskDay).inDays;
+
+    if (diff == 0) return 'Today, ${DateFormat('h:mm a').format(dt)}';
+    if (diff == 1) return 'Yesterday, ${DateFormat('h:mm a').format(dt)}';
+    return DateFormat('MMM d, h:mm a').format(dt);
   }
 
   // ── Monthly summary helpers ────────────────────────────────────────────────
@@ -279,11 +313,7 @@ class _ToDoHomeState extends State<ToDoHome> {
       final date = DateTime.parse(dateStr);
       loaded[date] = (taskList as List).map((t) {
         final map = Map<String, dynamic>.from(t as Map);
-        return Task(
-          title: (map['title'] ?? '').toString(),
-          note: (map['note'] ?? '').toString(),
-          isDone: map['isDone'] == true,
-        );
+        return Task.fromJson(map);
       }).toList();
     });
     setState(() {
@@ -346,8 +376,7 @@ class _ToDoHomeState extends State<ToDoHome> {
             const SizedBox(height: 16),
             const Divider(),
             const SizedBox(height: 8),
-            _infoRow(
-                Icons.person_outline, 'Developer', 'Dave Bangcoyo'),
+            _infoRow(Icons.person_outline, 'Developer', 'Dave Bangcoyo'),
             const SizedBox(height: 8),
             _infoRow(Icons.calendar_today_outlined, 'Built with',
                 'Flutter & Dart'),
@@ -357,10 +386,11 @@ class _ToDoHomeState extends State<ToDoHome> {
             const SizedBox(height: 16),
             const Divider(),
             const SizedBox(height: 8),
-            // ── Swipe hint in About ────────────────────────────────────
             _infoRow(Icons.swipe_right_alt, 'Swipe Right', 'Delete task'),
             const SizedBox(height: 8),
             _infoRow(Icons.swipe_left_alt, 'Swipe Left', 'Edit task'),
+            const SizedBox(height: 8),
+            _infoRow(Icons.push_pin_outlined, 'Pin icon', 'Pin task to top'),
           ],
         ),
         actions: [
@@ -448,7 +478,7 @@ class _ToDoHomeState extends State<ToDoHome> {
     }
   }
 
-  // ── Long Press: Show Full Note ─────────────────────────────────────────────
+  // ── Long Press: Show Full Note + Creation Date ─────────────────────────────
   void _showNoteDialog(Task task) {
     _dismissKeyboard();
     final isLight = Theme.of(context).brightness == Brightness.light;
@@ -468,21 +498,49 @@ class _ToDoHomeState extends State<ToDoHome> {
             ),
           ],
         ),
-        content: task.note.isNotEmpty
-            ? SingleChildScrollView(
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Creation date ────────────────────────────────────────────
+            Row(
+              children: [
+                Icon(Icons.access_time,
+                    size: 13,
+                    color: isLight ? Colors.black38 : Colors.white38),
+                const SizedBox(width: 4),
+                Text(
+                  'Created: ${_formatCreatedAt(task.createdAt)}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isLight ? Colors.black38 : Colors.white38,
+                  ),
+                ),
+              ],
+            ),
+            if (task.note.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              const Divider(height: 1),
+              const SizedBox(height: 10),
+              SingleChildScrollView(
                 child: Text(task.note,
                     style: TextStyle(
                         fontSize: 14,
                         color: isLight
                             ? Colors.black87
                             : Colors.white70)),
-              )
-            : Text('No notes added.',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: isLight ? Colors.black38 : Colors.white38,
-                  fontStyle: FontStyle.italic,
-                )),
+              ),
+            ] else ...[
+              const SizedBox(height: 8),
+              Text('No notes added.',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: isLight ? Colors.black38 : Colors.white38,
+                    fontStyle: FontStyle.italic,
+                  )),
+            ],
+          ],
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -690,6 +748,21 @@ class _ToDoHomeState extends State<ToDoHome> {
     _showCongratsIfNeeded();
   }
 
+  /// Toggle pinned status
+  void _togglePin(int index) {
+    HapticFeedback.lightImpact();
+    final key = _normalizeDate(_selectedDay);
+    final taskToPin = _selectedTasks[index];
+    final rawIndex = _rawTasks.indexOf(taskToPin);
+    setState(() {
+      if (rawIndex != -1) {
+        _tasksByDate[key]![rawIndex].isPinned =
+            !_tasksByDate[key]![rawIndex].isPinned;
+      }
+    });
+    _saveTasks();
+  }
+
   void _editTask(int index) {
     _dismissKeyboard();
     final key = _normalizeDate(_selectedDay);
@@ -849,14 +922,11 @@ class _ToDoHomeState extends State<ToDoHome> {
                         : Colors.indigo.shade300,
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Text(
-                    '$doneCount/$totalCount',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                  child: Text('$doneCount/$totalCount',
+                      style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold)),
                 ),
               ],
             ],
@@ -870,11 +940,9 @@ class _ToDoHomeState extends State<ToDoHome> {
                 onPressed: _clearDoneTasks,
               ),
             IconButton(
-              icon: Icon(
-                widget.themeMode == ThemeMode.light
-                    ? Icons.dark_mode
-                    : Icons.light_mode,
-              ),
+              icon: Icon(widget.themeMode == ThemeMode.light
+                  ? Icons.dark_mode
+                  : Icons.light_mode),
               onPressed: widget.toggleTheme,
             ),
           ],
@@ -900,9 +968,7 @@ class _ToDoHomeState extends State<ToDoHome> {
                 setState(() => _focusedDay = focusedDay);
               },
               headerStyle: const HeaderStyle(
-                formatButtonVisible: false,
-                titleCentered: true,
-              ),
+                  formatButtonVisible: false, titleCentered: true),
               calendarStyle: const CalendarStyle(
                 selectedDecoration: BoxDecoration(
                     color: Colors.orange, shape: BoxShape.circle),
@@ -932,10 +998,9 @@ class _ToDoHomeState extends State<ToDoHome> {
                     child: Text(
                       DateFormat('MMMM d, yyyy').format(date),
                       style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.indigo,
-                      ),
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.indigo),
                     ),
                   );
                 },
@@ -1023,16 +1088,13 @@ class _ToDoHomeState extends State<ToDoHome> {
                             ? Colors.indigo
                             : Colors.indigo.shade200),
                     const SizedBox(width: 8),
-                    Text(
-                      DateFormat('MMMM').format(_focusedDay),
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: isLight
-                            ? Colors.indigo
-                            : Colors.indigo.shade200,
-                      ),
-                    ),
+                    Text(DateFormat('MMMM').format(_focusedDay),
+                        style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: isLight
+                                ? Colors.indigo
+                                : Colors.indigo.shade200)),
                     const Spacer(),
                     Container(
                       padding: const EdgeInsets.symmetric(
@@ -1055,8 +1117,7 @@ class _ToDoHomeState extends State<ToDoHome> {
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(4),
                         child: LinearProgressIndicator(
-                          value:
-                              mTotal == 0 ? 0 : mDone / mTotal,
+                          value: mTotal == 0 ? 0 : mDone / mTotal,
                           minHeight: 6,
                           backgroundColor: isLight
                               ? Colors.indigo.shade100
@@ -1075,8 +1136,7 @@ class _ToDoHomeState extends State<ToDoHome> {
 
             // ── Input Row ─────────────────────────────────────────────────
             Padding(
-              padding:
-                  const EdgeInsets.fromLTRB(12, 12, 12, 0),
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
               child: Column(
                 children: [
                   Row(
@@ -1109,17 +1169,14 @@ class _ToDoHomeState extends State<ToDoHome> {
                             ),
                             counterText: '',
                             suffixIcon: IconButton(
-                              icon: Icon(
-                                Icons.note_add_outlined,
-                                color: _showNoteField
-                                    ? Colors.indigo
-                                    : Colors.grey,
-                                size: 20,
-                              ),
+                              icon: Icon(Icons.note_add_outlined,
+                                  color: _showNoteField
+                                      ? Colors.indigo
+                                      : Colors.grey,
+                                  size: 20),
                               tooltip: 'Add note',
                               onPressed: () => setState(() =>
-                                  _showNoteField =
-                                      !_showNoteField),
+                                  _showNoteField = !_showNoteField),
                             ),
                           ),
                           style: TextStyle(
@@ -1131,16 +1188,13 @@ class _ToDoHomeState extends State<ToDoHome> {
                               required isFocused,
                               maxLength}) {
                             if (currentLength > 80) {
-                              return Text(
-                                '$currentLength/$maxLength',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: currentLength >=
-                                          kMaxTitleLength
-                                      ? Colors.red
-                                      : Colors.grey,
-                                ),
-                              );
+                              return Text('$currentLength/$maxLength',
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      color: currentLength >=
+                                              kMaxTitleLength
+                                          ? Colors.red
+                                          : Colors.grey));
                             }
                             return null;
                           },
@@ -1208,33 +1262,27 @@ class _ToDoHomeState extends State<ToDoHome> {
             // ── Progress Bar ───────────────────────────────────────────────
             if (totalCount > 0)
               Padding(
-                padding:
-                    const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
                 child: Column(
                   children: [
                     Row(
                       mainAxisAlignment:
                           MainAxisAlignment.spaceBetween,
                       children: [
+                        Text('$doneCount/$totalCount done',
+                            style: TextStyle(
+                                fontSize: 13,
+                                color: isLight
+                                    ? Colors.black54
+                                    : Colors.white54)),
                         Text(
-                          '$doneCount/$totalCount done',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: isLight
-                                ? Colors.black54
-                                : Colors.white54,
-                          ),
-                        ),
-                        Text(
-                          '${(progress * 100).toStringAsFixed(0)}%',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.bold,
-                            color: progress == 1.0
-                                ? Colors.green
-                                : Colors.indigo,
-                          ),
-                        ),
+                            '${(progress * 100).toStringAsFixed(0)}%',
+                            style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: progress == 1.0
+                                    ? Colors.green
+                                    : Colors.indigo)),
                       ],
                     ),
                     const SizedBox(height: 4),
@@ -1247,10 +1295,9 @@ class _ToDoHomeState extends State<ToDoHome> {
                             ? Colors.grey.shade300
                             : Colors.grey.shade700,
                         valueColor: AlwaysStoppedAnimation<Color>(
-                          progress == 1.0
-                              ? Colors.green
-                              : Colors.indigo,
-                        ),
+                            progress == 1.0
+                                ? Colors.green
+                                : Colors.indigo),
                       ),
                     ),
                   ],
@@ -1270,24 +1317,20 @@ class _ToDoHomeState extends State<ToDoHome> {
                                   ? Colors.grey.shade300
                                   : Colors.grey.shade700),
                           const SizedBox(height: 16),
-                          Text(
-                            'No tasks for this day',
-                            style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w500,
-                                color: isLight
-                                    ? Colors.black54
-                                    : Colors.white54),
-                          ),
+                          Text('No tasks for this day',
+                              style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w500,
+                                  color: isLight
+                                      ? Colors.black54
+                                      : Colors.white54)),
                           const SizedBox(height: 6),
-                          Text(
-                            'Tap the field above to add one!',
-                            style: TextStyle(
-                                fontSize: 13,
-                                color: isLight
-                                    ? Colors.black38
-                                    : Colors.white38),
-                          ),
+                          Text('Tap the field above to add one!',
+                              style: TextStyle(
+                                  fontSize: 13,
+                                  color: isLight
+                                      ? Colors.black38
+                                      : Colors.white38)),
                         ],
                       ),
                     )
@@ -1301,9 +1344,8 @@ class _ToDoHomeState extends State<ToDoHome> {
                         initialItemCount: tasks.length,
                         itemBuilder:
                             (context, index, animation) {
-                          if (index >= tasks.length) {
+                          if (index >= tasks.length)
                             return const SizedBox.shrink();
-                          }
                           final task = tasks[index];
                           final Color cardColor = task.isDone
                               ? (isLight
@@ -1315,22 +1357,17 @@ class _ToDoHomeState extends State<ToDoHome> {
 
                           return SizeTransition(
                             sizeFactor: CurvedAnimation(
-                              parent: animation,
-                              curve: Curves.easeInOut,
-                            ),
+                                parent: animation,
+                                curve: Curves.easeInOut),
                             child: FadeTransition(
                               opacity: animation,
-                              // ── Dual Swipe Dismissible ─────────────────
                               child: Dismissible(
                                 key: ValueKey(
-                                    '${_normalizeDate(_selectedDay)}_${task.title}_${task.isDone}'),
-                                // Both directions enabled
+                                    '${_normalizeDate(_selectedDay)}_${task.title}_${task.isDone}_${task.isPinned}'),
                                 direction:
                                     DismissDirection.horizontal,
-                                // Background: swipe RIGHT → Delete (red)
                                 background: Container(
-                                  alignment:
-                                      Alignment.centerLeft,
+                                  alignment: Alignment.centerLeft,
                                   padding:
                                       const EdgeInsets.symmetric(
                                           horizontal: 20),
@@ -1344,8 +1381,7 @@ class _ToDoHomeState extends State<ToDoHome> {
                                         BorderRadius.circular(12),
                                   ),
                                   child: const Row(
-                                    mainAxisSize:
-                                        MainAxisSize.min,
+                                    mainAxisSize: MainAxisSize.min,
                                     children: [
                                       Icon(Icons.delete,
                                           color: Colors.white,
@@ -1360,10 +1396,8 @@ class _ToDoHomeState extends State<ToDoHome> {
                                     ],
                                   ),
                                 ),
-                                // Secondary background: swipe LEFT → Edit (blue)
                                 secondaryBackground: Container(
-                                  alignment:
-                                      Alignment.centerRight,
+                                  alignment: Alignment.centerRight,
                                   padding:
                                       const EdgeInsets.symmetric(
                                           horizontal: 20),
@@ -1377,8 +1411,7 @@ class _ToDoHomeState extends State<ToDoHome> {
                                         BorderRadius.circular(12),
                                   ),
                                   child: const Row(
-                                    mainAxisSize:
-                                        MainAxisSize.min,
+                                    mainAxisSize: MainAxisSize.min,
                                     mainAxisAlignment:
                                         MainAxisAlignment.end,
                                     children: [
@@ -1400,12 +1433,10 @@ class _ToDoHomeState extends State<ToDoHome> {
                                   if (direction ==
                                       DismissDirection
                                           .startToEnd) {
-                                    // Swipe right → confirm delete
                                     bool confirm = false;
                                     await showDialog(
                                       context: context,
-                                      builder: (ctx) =>
-                                          AlertDialog(
+                                      builder: (ctx) => AlertDialog(
                                         title: const Text(
                                             'Delete Task'),
                                         content: Text(
@@ -1414,8 +1445,7 @@ class _ToDoHomeState extends State<ToDoHome> {
                                           TextButton(
                                             onPressed: () {
                                               confirm = false;
-                                              Navigator.pop(
-                                                  ctx);
+                                              Navigator.pop(ctx);
                                             },
                                             child: const Text(
                                                 'Cancel'),
@@ -1424,12 +1454,10 @@ class _ToDoHomeState extends State<ToDoHome> {
                                             style: ElevatedButton
                                                 .styleFrom(
                                                     backgroundColor:
-                                                        Colors
-                                                            .red),
+                                                        Colors.red),
                                             onPressed: () {
                                               confirm = true;
-                                              Navigator.pop(
-                                                  ctx);
+                                              Navigator.pop(ctx);
                                             },
                                             child: const Text(
                                                 'Delete',
@@ -1442,17 +1470,14 @@ class _ToDoHomeState extends State<ToDoHome> {
                                     );
                                     return confirm;
                                   } else {
-                                    // Swipe left → open edit, don't dismiss
                                     _editTask(index);
                                     return false;
                                   }
                                 },
                                 onDismissed: (direction) {
                                   if (direction ==
-                                      DismissDirection
-                                          .startToEnd) {
+                                      DismissDirection.startToEnd)
                                     _removeTask(index);
-                                  }
                                 },
                                 child: GestureDetector(
                                   onLongPress: () =>
@@ -1471,81 +1496,131 @@ class _ToDoHomeState extends State<ToDoHome> {
                                     child: ListTile(
                                       leading: Checkbox(
                                         value: task.isDone,
-                                        activeColor:
-                                            Colors.indigo,
-                                        shape:
-                                            RoundedRectangleBorder(
-                                                borderRadius:
-                                                    BorderRadius
-                                                        .circular(
-                                                            4)),
+                                        activeColor: Colors.indigo,
+                                        shape: RoundedRectangleBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(
+                                                    4)),
                                         onChanged: (_) =>
                                             _toggleDone(index),
                                       ),
-                                      title: Text(
-                                        task.title,
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          color: task.isDone
-                                              ? (isLight
-                                                  ? Colors.black54
-                                                  : Colors.white70)
-                                              : (isLight
-                                                  ? Colors.black
-                                                  : Colors.white),
-                                          decoration: task.isDone
-                                              ? TextDecoration
-                                                  .lineThrough
-                                              : TextDecoration
-                                                  .none,
-                                        ),
+                                      title: Row(
+                                        children: [
+                                          // ── Pin indicator ────────────
+                                          if (task.isPinned)
+                                            const Padding(
+                                              padding: EdgeInsets.only(
+                                                  right: 4),
+                                              child: Icon(
+                                                Icons.push_pin,
+                                                size: 14,
+                                                color: Colors.orange,
+                                              ),
+                                            ),
+                                          Expanded(
+                                            child: Text(
+                                              task.title,
+                                              style: TextStyle(
+                                                fontSize: 16,
+                                                color: task.isDone
+                                                    ? (isLight
+                                                        ? Colors
+                                                            .black54
+                                                        : Colors
+                                                            .white70)
+                                                    : (isLight
+                                                        ? Colors.black
+                                                        : Colors
+                                                            .white),
+                                                decoration: task
+                                                        .isDone
+                                                    ? TextDecoration
+                                                        .lineThrough
+                                                    : TextDecoration
+                                                        .none,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
                                       ),
-                                      subtitle:
-                                          task.note.isNotEmpty
-                                              ? Row(
-                                                  children: [
-                                                    Expanded(
-                                                      child: Text(
-                                                        task.note,
-                                                        maxLines: 1,
-                                                        overflow:
-                                                            TextOverflow
-                                                                .ellipsis,
-                                                        style:
-                                                            TextStyle(
-                                                          fontSize:
-                                                              12,
-                                                          color: task
-                                                                  .isDone
-                                                              ? (isLight
-                                                                  ? Colors
-                                                                      .black45
-                                                                  : Colors
-                                                                      .white54)
-                                                              : (isLight
-                                                                  ? Colors
-                                                                      .black45
-                                                                  : Colors
-                                                                      .white38),
-                                                        ),
-                                                      ),
+                                      // ── Subtitle: note + creation date
+                                      subtitle: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        mainAxisSize:
+                                            MainAxisSize.min,
+                                        children: [
+                                          if (task.note.isNotEmpty)
+                                            Row(
+                                              children: [
+                                                Expanded(
+                                                  child: Text(
+                                                    task.note,
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow
+                                                        .ellipsis,
+                                                    style: TextStyle(
+                                                      fontSize: 12,
+                                                      color: task.isDone
+                                                          ? (isLight
+                                                              ? Colors
+                                                                  .black45
+                                                              : Colors
+                                                                  .white54)
+                                                          : (isLight
+                                                              ? Colors
+                                                                  .black45
+                                                              : Colors
+                                                                  .white38),
                                                     ),
-                                                    Icon(
-                                                        Icons
-                                                            .open_in_full,
-                                                        size: 11,
-                                                        color: isLight
-                                                            ? Colors
-                                                                .black26
-                                                            : Colors
-                                                                .white24),
-                                                  ],
-                                                )
-                                              : null,
+                                                  ),
+                                                ),
+                                                Icon(
+                                                    Icons
+                                                        .open_in_full,
+                                                    size: 11,
+                                                    color: isLight
+                                                        ? Colors
+                                                            .black26
+                                                        : Colors
+                                                            .white24),
+                                              ],
+                                            ),
+                                          // ── Creation date ────────────
+                                          Text(
+                                            _formatCreatedAt(
+                                                task.createdAt),
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              color: isLight
+                                                  ? Colors.black38
+                                                  : Colors.white38,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                       trailing: Row(
                                         mainAxisSize:
                                             MainAxisSize.min,
                                         children: [
+                                          // ── Pin button ───────────────
+                                          IconButton(
+                                            icon: Icon(
+                                              task.isPinned
+                                                  ? Icons.push_pin
+                                                  : Icons
+                                                      .push_pin_outlined,
+                                              color: task.isPinned
+                                                  ? Colors.orange
+                                                  : Colors.grey,
+                                              size: 20,
+                                            ),
+                                            tooltip: task.isPinned
+                                                ? 'Unpin'
+                                                : 'Pin to top',
+                                            onPressed: () =>
+                                                _togglePin(index),
+                                          ),
                                           IconButton(
                                             icon: const Icon(
                                                 Icons.edit,
