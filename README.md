@@ -26,6 +26,10 @@ Tasks are saved locally using device storage. Accidentally deleted a task? Insta
 
 ## Download Apps
 ![alt text](image.png)
+```
+- https://www.virustotal.com/gui/file/ee19d5c0c4293c4c21939e9d9ab7e6e6b32e8e48212ed9bc1ef1e76a588a94ad/detection
+```
 
 Link - [Click Here](https://kirotask.vercel.app/)
+
 ---
