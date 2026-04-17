@@ -1,17 +1,27 @@
-# Kiro_Task
+# 📝 KiroTask
 
-A new Flutter project.
+KiroTask is a modern and minimal task management app designed to help users stay organized, focused, and productive. It provides a clean interface with powerful features for managing daily tasks efficiently.
 
-## Getting Started
+---
 
-This project is a starting point for a Flutter application.
+## ✨ Features
 
-A few resources to get you started if this is your first Flutter project:
+### 📅 Task Calendar
+Add, view, and manage tasks per day using a built-in calendar. Days with tasks are color-coded for quick scanning.
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+### ✏️ Edit & Notes
+Each task supports a note field. Easily update task titles and notes anytime.
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+### 📊 Progress Tracking
+Track your daily and monthly productivity with visual progress bars and task completion counters.
+
+### 📌 Pin & Prioritize
+Pin important tasks to keep them at the top. Pinned tasks always appear first regardless of status.
+
+### 🌙 Light & Dark Mode
+Switch between light and dark themes anytime. Your preference is saved and automatically applied.
+
+### 💾 Save & Undo
+Tasks are saved locally using device storage. Accidentally deleted a task? Instantly undo it.
+
+---
