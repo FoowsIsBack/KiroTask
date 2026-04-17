@@ -24,6 +24,8 @@ Switch between light and dark themes anytime. Your preference is saved and autom
 ### 💾 Save & Undo
 Tasks are saved locally using device storage. Accidentally deleted a task? Instantly undo it.
 
-### Download Apps
+## Download Apps
+![alt text](image.png)
+
 Link - [Click Here](https://kirotask.vercel.app/)
 ---
